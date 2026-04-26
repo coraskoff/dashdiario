@@ -15,6 +15,7 @@ import {
 import type { Bucket, Task, TaskStatus } from "@/modules/tasks/types";
 import {
   bucketDueDate,
+  dayAfterTomorrowIso,
   groupByBucket,
   todayIso,
   tomorrowIso,
@@ -891,14 +892,6 @@ function formatFullDate(iso: string): string {
     day: "2-digit",
     month: "long",
   }).format(d);
-}
-
-function dayAfterTomorrowIso(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 2);
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${day}`;
 }
 
 function weekdayLabel(iso: string): string {
