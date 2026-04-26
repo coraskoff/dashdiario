@@ -25,13 +25,6 @@ export function dayAfterTomorrowIso(): string {
 
 /**
  * Classify a task by its due_date relative to today.
- * - today: due == today OR overdue (overdue still belongs to "Hoje" — it screams for attention)
- * - tomorrow: due == tomorrow
- * - later: due > tomorrow
- * - week: no due date set
- */
-/**
- * Classify a task by its due_date relative to today.
  * - today: due == today OR overdue
  * - tomorrow: due == tomorrow
  * - later: due == day after tomorrow (strict — "Depois" means hoje + 2)
