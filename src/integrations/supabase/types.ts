@@ -38,6 +38,30 @@ export type Database = {
         }
         Relationships: []
       }
+      projects: {
+        Row: {
+          color: string | null
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       tasks: {
         Row: {
           completed_at: string | null
@@ -45,6 +69,7 @@ export type Database = {
           description: string | null
           due_date: string | null
           id: string
+          project_id: string | null
           status: Database["public"]["Enums"]["task_status"]
           title: string
           updated_at: string
@@ -55,6 +80,7 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           id?: string
+          project_id?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           title: string
           updated_at?: string
@@ -65,11 +91,20 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           id?: string
+          project_id?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           title?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transactions: {
         Row: {
