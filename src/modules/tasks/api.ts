@@ -30,6 +30,7 @@ export async function createTask(input: TaskInput): Promise<Task> {
       title: normalizeTitle(input.title),
       description: input.description?.trim() || null,
       due_date: input.due_date ?? null,
+      project_id: input.project_id ?? null,
     })
     .select()
     .single();
@@ -45,6 +46,7 @@ export async function updateTask(id: string, input: TaskInput): Promise<Task> {
       title: normalizeTitle(input.title),
       description: input.description?.trim() || null,
       due_date: input.due_date ?? null,
+      project_id: input.project_id ?? null,
     })
     .eq("id", id)
     .select()
