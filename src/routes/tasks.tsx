@@ -20,6 +20,13 @@ import {
 } from "@/modules/tasks/buckets";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  createProject,
+  deleteProject,
+  fetchProjects,
+  projectColor,
+} from "@/modules/projects/api";
+import { ProjectTabs, type ActiveProject } from "@/components/ProjectTabs";
 
 export const Route = createFileRoute("/tasks")({
   head: () => ({
@@ -42,12 +49,64 @@ function TasksPage() {
     queryKey: ["tasks"],
     queryFn: fetchTasks,
   });
+  const { data: projects = [] } = useQuery({
+    queryKey: ["projects"],
+    queryFn: fetchProjects,
+  });
 
-  const buckets = useMemo(() => groupByBucket(tasks), [tasks]);
+  const [activeProject, setActiveProject] = useState<ActiveProject>("all");
+
+  // Filter tasks by active project tab
+  const visibleTasks = useMemo(() => {
+    if (activeProject === "all") return tasks;
+    return tasks.filter((t) => t.project_id === activeProject);
+  }, [tasks, activeProject]);
+
+  const buckets = useMemo(() => groupByBucket(visibleTasks), [visibleTasks]);
+
+  // Counts per project (pending only — that's what matters for scanning)
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: 0 };
+    for (const t of tasks) {
+      if (t.status !== "pending") continue;
+      c.all += 1;
+      if (t.project_id) c[t.project_id] = (c[t.project_id] ?? 0) + 1;
+    }
+    return c;
+  }, [tasks]);
+
+  // When creating a task, attach to active project (null when "all")
+  const newTaskProjectId = activeProject === "all" ? null : activeProject;
+
+  const projectsById = useMemo(
+    () => Object.fromEntries(projects.map((p) => [p.id, p])),
+    [projects],
+  );
 
   const create = useMutation({
     mutationFn: createTask,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const createProj = useMutation({
+    mutationFn: createProject,
+    onSuccess: (p) => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      setActiveProject(p.id);
+      toast.success(`Projeto “${p.name}” criado`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const removeProj = useMutation({
+    mutationFn: deleteProject,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      setActiveProject("all");
+      toast.success("Projeto removido");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -98,7 +157,7 @@ function TasksPage() {
   });
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const pendingTotal = tasks.filter((t) => t.status === "pending").length;
+  const pendingTotal = visibleTasks.filter((t) => t.status === "pending").length;
 
   const columnHandlers = {
     onToggle: (t: Task) =>
@@ -115,6 +174,8 @@ function TasksPage() {
       setEditingId(null);
     },
     onCancelEdit: () => setEditingId(null),
+    projectsById,
+    showProjectDot: activeProject === "all",
   };
 
   return (
@@ -135,12 +196,22 @@ function TasksPage() {
         </div>
       </header>
 
+      {/* Project tabs — keyboard navigable: Tab to focus, ←/→ to switch */}
+      <ProjectTabs
+        projects={projects}
+        active={activeProject}
+        onChange={setActiveProject}
+        onCreate={(name) => createProj.mutate(name)}
+        onDelete={(id) => removeProj.mutate(id)}
+        counts={counts}
+      />
+
       {/* "Semana" — horizontal strip on top: macro plan, distinct from daily focus */}
       <WeekStrip
         tasks={buckets.week}
         onAdd={(title) =>
           create.mutate(
-            { title, due_date: null },
+            { title, due_date: null, project_id: newTaskProjectId },
             { onSuccess: () => toast.success("Adicionada à Semana") },
           )
         }
@@ -158,7 +229,7 @@ function TasksPage() {
           tasks={buckets.today}
           bucket="today"
           onAdd={(title) =>
-            create.mutate({ title, due_date: todayIso() })
+            create.mutate({ title, due_date: todayIso(), project_id: newTaskProjectId })
           }
           loading={isLoading}
           {...columnHandlers}
@@ -171,7 +242,7 @@ function TasksPage() {
           tasks={buckets.tomorrow}
           bucket="tomorrow"
           onAdd={(title) =>
-            create.mutate({ title, due_date: tomorrowIso() })
+            create.mutate({ title, due_date: tomorrowIso(), project_id: newTaskProjectId })
           }
           loading={isLoading}
           {...columnHandlers}
@@ -184,7 +255,7 @@ function TasksPage() {
           tasks={buckets.later}
           bucket="later"
           onAdd={(title) =>
-            create.mutate({ title, due_date: bucketDueDate("later") })
+            create.mutate({ title, due_date: bucketDueDate("later"), project_id: newTaskProjectId })
           }
           loading={isLoading}
           {...columnHandlers}
@@ -205,6 +276,8 @@ interface ColumnHandlers {
   editingId: string | null;
   onSaveEdit: (id: string, title: string, description: string) => void;
   onCancelEdit: () => void;
+  projectsById: Record<string, { id: string; name: string; color: string | null }>;
+  showProjectDot: boolean;
 }
 
 function WeekStrip({
@@ -270,8 +343,11 @@ function WeekChip({
   onToggle,
   onMove,
   onDelete,
+  projectsById,
+  showProjectDot,
 }: ColumnHandlers & { task: Task }) {
   const done = task.status === "completed";
+  const project = task.project_id ? projectsById[task.project_id] : null;
   return (
     <div
       draggable
@@ -292,6 +368,14 @@ function WeekChip({
       >
         {done && <Check className="h-3 w-3" />}
       </button>
+      {showProjectDot && project && (
+        <span
+          aria-hidden
+          className="h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ background: projectColor(project) }}
+          title={project.name}
+        />
+      )}
       <span className={`truncate ${done ? "line-through" : ""}`}>{task.title}</span>
       <div className="ml-1 hidden items-center gap-1 text-muted-foreground group-hover:flex">
         <button
@@ -475,8 +559,11 @@ function TaskRow({
   onToggle,
   onEdit,
   onDelete,
+  projectsById,
+  showProjectDot,
 }: ColumnHandlers & { task: Task; accent?: boolean }) {
   const done = task.status === "completed";
+  const project = task.project_id ? projectsById[task.project_id] : null;
   return (
     <li
       draggable
@@ -495,17 +582,27 @@ function TaskRow({
         {done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
       </button>
       <div className="min-w-0 flex-1">
-        <p
-          className={`text-sm leading-snug ${
-            done
-              ? "text-muted-foreground line-through"
-              : accent
-                ? "font-medium text-foreground"
-                : "text-foreground"
-          }`}
-        >
-          {task.title}
-        </p>
+        <div className="flex items-center gap-2">
+          {showProjectDot && project && (
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ background: projectColor(project) }}
+              title={project.name}
+            />
+          )}
+          <p
+            className={`text-sm leading-snug ${
+              done
+                ? "text-muted-foreground line-through"
+                : accent
+                  ? "font-medium text-foreground"
+                  : "text-foreground"
+            }`}
+          >
+            {task.title}
+          </p>
+        </div>
         {task.description && !done && (
           <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
             {task.description}
