@@ -319,10 +319,13 @@ interface ColumnHandlers {
   onEdit: (t: Task) => void;
   onDelete: (t: Task) => void;
   onMove: (id: string, bucket: Bucket) => void;
+  onSetDate: (id: string, date: string | null) => void;
+  onSetProject: (id: string, projectId: string | null) => void;
   editingId: string | null;
   onSaveEdit: (id: string, title: string, description: string) => void;
   onCancelEdit: () => void;
   projectsById: Record<string, { id: string; name: string; color: string | null }>;
+  projects: Project[];
   showProjectDot: boolean;
 }
 
