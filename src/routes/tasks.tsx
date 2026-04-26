@@ -559,8 +559,11 @@ function TaskRow({
   onToggle,
   onEdit,
   onDelete,
+  projectsById,
+  showProjectDot,
 }: ColumnHandlers & { task: Task; accent?: boolean }) {
   const done = task.status === "completed";
+  const project = task.project_id ? projectsById[task.project_id] : null;
   return (
     <li
       draggable
@@ -579,17 +582,27 @@ function TaskRow({
         {done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
       </button>
       <div className="min-w-0 flex-1">
-        <p
-          className={`text-sm leading-snug ${
-            done
-              ? "text-muted-foreground line-through"
-              : accent
-                ? "font-medium text-foreground"
-                : "text-foreground"
-          }`}
-        >
-          {task.title}
-        </p>
+        <div className="flex items-center gap-2">
+          {showProjectDot && project && (
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ background: projectColor(project) }}
+              title={project.name}
+            />
+          )}
+          <p
+            className={`text-sm leading-snug ${
+              done
+                ? "text-muted-foreground line-through"
+                : accent
+                  ? "font-medium text-foreground"
+                  : "text-foreground"
+            }`}
+          >
+            {task.title}
+          </p>
+        </div>
         {task.description && !done && (
           <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
             {task.description}
