@@ -713,6 +713,186 @@ function dayNumber(iso: string): number {
   return Number(iso.split("-")[2]);
 }
 
+/* ---------------------- Hover preview + Actions menu ---------------------- */
+
+function TaskHoverPreview({
+  task,
+  project,
+}: {
+  task: Task;
+  project: { id: string; name: string; color: string | null } | null;
+}) {
+  return (
+    <HoverCardContent side="top" align="start" className="w-72 p-3">
+      <div className="space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-medium leading-snug">{task.title}</p>
+          {project && (
+            <span className="flex shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span
+                aria-hidden
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: projectColor(project) }}
+              />
+              {project.name}
+            </span>
+          )}
+        </div>
+        <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+          {task.due_date ? formatFullDate(task.due_date) : "Sem data — Semana"}
+        </p>
+        {task.description ? (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {task.description}
+          </p>
+        ) : (
+          <p className="text-xs italic text-muted-foreground/60">Sem descrição.</p>
+        )}
+      </div>
+    </HoverCardContent>
+  );
+}
+
+function TaskActionsMenu({
+  task,
+  onEdit,
+  onDelete,
+  onMove,
+  onSetDate,
+  onSetProject,
+  projects,
+}: ColumnHandlers & { task: Task }) {
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            onClick={(e) => e.stopPropagation()}
+            className="rounded p-1 text-muted-foreground hover:bg-card hover:text-foreground focus:outline-none focus-visible:text-foreground"
+            aria-label="Ações"
+          >
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem onSelect={() => onEdit(task)}>
+            <Pencil className="mr-2 h-3.5 w-3.5" />
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setDatePickerOpen(true)}>
+            <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+            Escolher data…
+          </DropdownMenuItem>
+
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <ArrowRight className="mr-2 h-3.5 w-3.5" />
+              Mover para
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "week")}>
+                Semana
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "today")}>
+                Hoje
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "tomorrow")}>
+                Amanhã
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "later")}>
+                Depois
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <FolderInput className="mr-2 h-3.5 w-3.5" />
+              Projeto
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+              <DropdownMenuItem onSelect={() => onSetProject(task.id, null)}>
+                <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                Sem projeto
+                {!task.project_id && <Check className="ml-auto h-3.5 w-3.5" />}
+              </DropdownMenuItem>
+              {projects.length > 0 && <DropdownMenuSeparator />}
+              {projects.map((p) => (
+                <DropdownMenuItem
+                  key={p.id}
+                  onSelect={() => onSetProject(task.id, p.id)}
+                >
+                  <span
+                    aria-hidden
+                    className="mr-2 inline-block h-1.5 w-1.5 rounded-full"
+                    style={{ background: projectColor(p) }}
+                  />
+                  {p.name}
+                  {task.project_id === p.id && <Check className="ml-auto h-3.5 w-3.5" />}
+                </DropdownMenuItem>
+              ))}
+              {projects.length === 0 && (
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                  Nenhum projeto criado.
+                </DropdownMenuLabel>
+              )}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => onDelete(task)}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="mr-2 h-3.5 w-3.5" />
+            Excluir
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Standalone popover for the calendar so it survives the menu closing */}
+      <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+        <PopoverTrigger asChild>
+          <span className="sr-only" aria-hidden />
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-auto p-0">
+          <Calendar
+            mode="single"
+            selected={task.due_date ? parseIsoDate(task.due_date) : undefined}
+            onSelect={(d) => {
+              if (d) onSetDate(task.id, toIsoLocal(d));
+              setDatePickerOpen(false);
+            }}
+            initialFocus
+            className={cn("p-3 pointer-events-auto")}
+          />
+        </PopoverContent>
+      </Popover>
+    </>
+  );
+}
+
+function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function toIsoLocal(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function formatFullDate(iso: string): string {
+  const d = parseIsoDate(iso);
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  }).format(d);
+}
+
 function dayAfterTomorrowIso(): string {
   const d = new Date();
   d.setDate(d.getDate() + 2);
