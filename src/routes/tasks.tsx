@@ -894,14 +894,6 @@ function formatFullDate(iso: string): string {
   }).format(d);
 }
 
-function dayAfterTomorrowIso(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 2);
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${day}`;
-}
-
 function weekdayLabel(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   return new Intl.DateTimeFormat("pt-BR", { weekday: "long" })
