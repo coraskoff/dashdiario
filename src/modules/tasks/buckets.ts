@@ -41,7 +41,7 @@ export function bucketDueDate(bucket: Bucket): string | null {
       return tomorrowIso();
     case "later": {
       const d = new Date();
-      d.setDate(d.getDate() + 7);
+      d.setDate(d.getDate() + 2);
       return toIsoDate(d);
     }
     case "week":
