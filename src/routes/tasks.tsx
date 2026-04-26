@@ -2,12 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowRight, Calendar as CalendarIcon, Check, FolderInput, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   createTask,
   deleteTask,
   fetchTasks,
   setTaskDueDate,
+  setTaskProject,
   setTaskStatus,
   updateTask,
 } from "@/modules/tasks/api";
@@ -20,12 +21,28 @@ import {
 } from "@/modules/tasks/buckets";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import {
   createProject,
   deleteProject,
   fetchProjects,
   projectColor,
 } from "@/modules/projects/api";
+import type { Project } from "@/modules/projects/types";
 import { ProjectTabs, type ActiveProject } from "@/components/ProjectTabs";
 
 export const Route = createFileRoute("/tasks")({
