@@ -61,7 +61,7 @@ export function ProjectTabs({
     <div
       role="tablist"
       aria-label="Projetos"
-      className="flex items-end gap-1 overflow-x-auto border-b border-border/70"
+      className="flex flex-wrap items-end gap-1 border-b border-border/70"
     >
       {items.map((it, idx) => {
         const isActive = it.key === active;
