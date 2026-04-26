@@ -390,59 +390,53 @@ function WeekStrip({
 function WeekChip({
   task,
   onToggle,
-  onMove,
-  onDelete,
   projectsById,
   showProjectDot,
+  ...handlers
 }: ColumnHandlers & { task: Task }) {
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
   return (
-    <div
-      draggable
-      onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
-      className={`group flex max-w-full items-center gap-2 rounded-full border border-border bg-card pl-1 pr-2 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
-        done ? "opacity-50" : ""
-      }`}
-      title="Arraste para Hoje, Amanhã ou Depois"
-    >
-      <button
-        onClick={() => onToggle(task)}
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-          done
-            ? "border-foreground bg-foreground text-background"
-            : "border-border hover:border-foreground"
-        }`}
-        aria-label={done ? "Reabrir" : "Concluir"}
-      >
-        {done && <Check className="h-3 w-3" />}
-      </button>
-      {showProjectDot && project && (
-        <span
-          aria-hidden
-          className="h-1.5 w-1.5 shrink-0 rounded-full"
-          style={{ background: projectColor(project) }}
-          title={project.name}
-        />
-      )}
-      <span className={`truncate ${done ? "line-through" : ""}`}>{task.title}</span>
-      <div className="ml-1 hidden items-center gap-1 text-muted-foreground group-hover:flex">
-        <button
-          onClick={() => onMove(task.id, "today")}
-          className="rounded px-1 text-[10px] uppercase tracking-wider hover:text-foreground"
-          title="Mover para Hoje"
+    <HoverCard openDelay={150} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <div
+          draggable
+          onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
+          className={`group flex max-w-full items-center gap-2 rounded-full border border-border bg-card pl-1 pr-1 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
+            done ? "opacity-50" : ""
+          }`}
         >
-          hoje
-        </button>
-        <button
-          onClick={() => onDelete(task)}
-          className="rounded p-0.5 hover:bg-destructive/10 hover:text-destructive"
-          aria-label="Remover"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
-      </div>
-    </div>
+          <button
+            onClick={() => onToggle(task)}
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+              done
+                ? "border-foreground bg-foreground text-background"
+                : "border-border hover:border-foreground"
+            }`}
+            aria-label={done ? "Reabrir" : "Concluir"}
+          >
+            {done && <Check className="h-3 w-3" />}
+          </button>
+          {showProjectDot && project && (
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ background: projectColor(project) }}
+              title={project.name}
+            />
+          )}
+          <span className={`truncate px-1 ${done ? "line-through" : ""}`}>{task.title}</span>
+          <TaskActionsMenu
+            task={task}
+            projectsById={projectsById}
+            {...handlers}
+            onToggle={onToggle}
+            showProjectDot={showProjectDot}
+          />
+        </div>
+      </HoverCardTrigger>
+      <TaskHoverPreview task={task} project={project} />
+    </HoverCard>
   );
 }
 
