@@ -17,6 +17,12 @@ export function tomorrowIso(): string {
   return toIsoDate(d);
 }
 
+export function dayAfterTomorrowIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 2);
+  return toIsoDate(d);
+}
+
 /**
  * Classify a task by its due_date relative to today.
  * - today: due == today OR overdue (overdue still belongs to "Hoje" — it screams for attention)
@@ -24,13 +30,24 @@ export function tomorrowIso(): string {
  * - later: due > tomorrow
  * - week: no due date set
  */
+/**
+ * Classify a task by its due_date relative to today.
+ * - today: due == today OR overdue
+ * - tomorrow: due == tomorrow
+ * - later: due == day after tomorrow (strict — "Depois" means hoje + 2)
+ * - week: no due date set OR due date further than hoje + 2
+ *   (the task keeps its own due_date; it just lives in the Week strip until
+ *   it enters the 3-day kanban window)
+ */
 export function bucketOf(task: Task): Bucket {
   if (!task.due_date) return "week";
   const today = todayIso();
   const tomorrow = tomorrowIso();
+  const dayAfter = dayAfterTomorrowIso();
   if (task.due_date <= today) return "today";
   if (task.due_date === tomorrow) return "tomorrow";
-  return "later";
+  if (task.due_date === dayAfter) return "later";
+  return "week";
 }
 
 export function bucketDueDate(bucket: Bucket): string | null {
