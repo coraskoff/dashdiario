@@ -1,31 +1,40 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   createTask,
   deleteTask,
   fetchTasks,
+  setTaskDueDate,
   setTaskStatus,
   updateTask,
 } from "@/modules/tasks/api";
-import type { Task, TaskStatus } from "@/modules/tasks/types";
-import { Button } from "@/components/ui/button";
+import type { Bucket, Task, TaskStatus } from "@/modules/tasks/types";
+import {
+  bucketDueDate,
+  groupByBucket,
+  todayIso,
+  tomorrowIso,
+} from "@/modules/tasks/buckets";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-
-type Filter = "all" | TaskStatus;
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/tasks")({
   head: () => ({
     meta: [
       { title: "Tarefas — Foco" },
-      { name: "description", content: "Gerencie suas tarefas pessoais." },
+      {
+        name: "description",
+        content: "Kanban semanal: Hoje, Amanhã e Depois.",
+      },
     ],
   }),
   component: TasksPage,
 });
+
+/* ----------------------------- Page ----------------------------- */
 
 function TasksPage() {
   const qc = useQueryClient();
@@ -34,33 +43,38 @@ function TasksPage() {
     queryFn: fetchTasks,
   });
 
-  const [filter, setFilter] = useState<Filter>("all");
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const buckets = useMemo(() => groupByBucket(tasks), [tasks]);
 
   const create = useMutation({
     mutationFn: createTask,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      toast.success("Tarefa criada");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const updateStatus = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: TaskStatus }) =>
-      setTaskStatus(id, status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const update = useMutation({
-    mutationFn: ({ id, ...input }: { id: string; title: string; description: string }) =>
-      updateTask(id, { title: input.title, description: input.description }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      setEditingId(null);
-      toast.success("Tarefa atualizada");
+  const move = useMutation({
+    mutationFn: ({ id, bucket }: { id: string; bucket: Bucket }) =>
+      setTaskDueDate(id, bucketDueDate(bucket)),
+    onMutate: async ({ id, bucket }) => {
+      await qc.cancelQueries({ queryKey: ["tasks"] });
+      const prev = qc.getQueryData<Task[]>(["tasks"]);
+      qc.setQueryData<Task[]>(["tasks"], (old) =>
+        (old ?? []).map((t) =>
+          t.id === id ? { ...t, due_date: bucketDueDate(bucket) } : t,
+        ),
+      );
+      return { prev };
     },
+    onError: (e: Error, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
+      toast.error(e.message);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
+
+  const toggle = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: TaskStatus }) =>
+      setTaskStatus(id, status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -73,221 +87,482 @@ function TasksPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const filtered = tasks.filter((t) => filter === "all" || t.status === filter);
+  const update = useMutation({
+    mutationFn: ({ id, title, description }: { id: string; title: string; description: string }) =>
+      updateTask(id, { title, description }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      toast.success("Tarefa atualizada");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const pendingTotal = tasks.filter((t) => t.status === "pending").length;
+
+  const columnHandlers = {
+    onToggle: (t: Task) =>
+      toggle.mutate({
+        id: t.id,
+        status: t.status === "pending" ? "completed" : "pending",
+      }),
+    onEdit: (t: Task) => setEditingId(t.id),
+    onDelete: (t: Task) => remove.mutate(t.id),
+    onMove: (id: string, bucket: Bucket) => move.mutate({ id, bucket }),
+    editingId,
+    onSaveEdit: (id: string, title: string, description: string) => {
+      update.mutate({ id, title, description });
+      setEditingId(null);
+    },
+    onCancelEdit: () => setEditingId(null),
+  };
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+    <div className="space-y-10">
+      {/* Header — typographic anchor, not a card */}
+      <header className="flex items-end justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Tarefas</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {tasks.filter((t) => t.status === "pending").length} pendentes ·{" "}
-            {tasks.filter((t) => t.status === "completed").length} concluídas
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            {weekRangeLabel()}
           </p>
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
+            Sua semana.
+          </h1>
         </div>
-        <FilterTabs value={filter} onChange={setFilter} />
+        <div className="hidden text-right text-sm text-muted-foreground md:block">
+          <span className="tabular-nums text-foreground">{pendingTotal}</span>{" "}
+          {pendingTotal === 1 ? "tarefa pendente" : "tarefas pendentes"}
+        </div>
       </header>
 
-      <NewTaskForm onSubmit={(input) => create.mutate(input)} pending={create.isPending} />
+      {/* "Semana" — horizontal strip on top: macro plan, distinct from daily focus */}
+      <WeekStrip
+        tasks={buckets.week}
+        onAdd={(title) =>
+          create.mutate(
+            { title, due_date: null },
+            { onSuccess: () => toast.success("Adicionada à Semana") },
+          )
+        }
+        loading={isLoading}
+        {...columnHandlers}
+      />
 
-      <ul className="space-y-2">
-        {isLoading && <EmptyState text="Carregando…" />}
-        {!isLoading && filtered.length === 0 && (
-          <EmptyState text="Nenhuma tarefa por aqui." />
+      {/* Day columns — asymmetric grid: Today is dominant */}
+      <div className="grid gap-5 md:grid-cols-[1.6fr_1fr_1fr]">
+        <DayColumn
+          dayNumber={dayNumber(todayIso())}
+          weekday={weekdayLabel(todayIso())}
+          label="Hoje"
+          accent
+          tasks={buckets.today}
+          bucket="today"
+          onAdd={(title) =>
+            create.mutate({ title, due_date: todayIso() })
+          }
+          loading={isLoading}
+          {...columnHandlers}
+          emptyText="Dia limpo. Capriche em uma coisa só."
+        />
+        <DayColumn
+          dayNumber={dayNumber(tomorrowIso())}
+          weekday={weekdayLabel(tomorrowIso())}
+          label="Amanhã"
+          tasks={buckets.tomorrow}
+          bucket="tomorrow"
+          onAdd={(title) =>
+            create.mutate({ title, due_date: tomorrowIso() })
+          }
+          loading={isLoading}
+          {...columnHandlers}
+          emptyText="Nada agendado."
+        />
+        <DayColumn
+          dayNumber={null}
+          weekday="próximos dias"
+          label="Depois"
+          tasks={buckets.later}
+          bucket="later"
+          onAdd={(title) =>
+            create.mutate({ title, due_date: bucketDueDate("later") })
+          }
+          loading={isLoading}
+          {...columnHandlers}
+          emptyText="Sem compromissos."
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------- Week strip (top row) ---------------------- */
+
+interface ColumnHandlers {
+  onToggle: (t: Task) => void;
+  onEdit: (t: Task) => void;
+  onDelete: (t: Task) => void;
+  onMove: (id: string, bucket: Bucket) => void;
+  editingId: string | null;
+  onSaveEdit: (id: string, title: string, description: string) => void;
+  onCancelEdit: () => void;
+}
+
+function WeekStrip({
+  tasks,
+  onAdd,
+  loading,
+  ...handlers
+}: ColumnHandlers & {
+  tasks: Task[];
+  onAdd: (title: string) => void;
+  loading: boolean;
+}) {
+  const [drag, setDrag] = useState(false);
+  return (
+    <section
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDrag(true);
+      }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDrag(false);
+        const id = e.dataTransfer.getData("text/task-id");
+        if (id) handlers.onMove(id, "week");
+      }}
+      className={`rounded-2xl border bg-card/60 p-5 transition-colors ${
+        drag ? "border-foreground/40 bg-secondary/60" : "border-border"
+      }`}
+    >
+      <div className="flex items-baseline justify-between gap-4 pb-4">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-base font-semibold">Semana</h2>
+          <span className="text-xs text-muted-foreground">
+            ideias e metas sem dia definido
+          </span>
+        </div>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {tasks.filter((t) => t.status === "pending").length}
+        </span>
+      </div>
+
+      <QuickAdd placeholder="Algo para esta semana…" onAdd={onAdd} />
+
+      {/* Horizontal flowing chips — different from vertical day columns */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {loading && <span className="text-sm text-muted-foreground">Carregando…</span>}
+        {!loading && tasks.length === 0 && (
+          <span className="text-sm text-muted-foreground">
+            Use este espaço para o que quer fazer “em algum momento”.
+          </span>
         )}
-        {filtered.map((task) =>
-          editingId === task.id ? (
-            <EditTaskRow
-              key={task.id}
-              task={task}
-              onCancel={() => setEditingId(null)}
-              onSave={(input) => update.mutate({ id: task.id, ...input })}
-              pending={update.isPending}
+        {tasks.map((t) => (
+          <WeekChip key={t.id} task={t} {...handlers} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function WeekChip({
+  task,
+  onToggle,
+  onMove,
+  onDelete,
+}: ColumnHandlers & { task: Task }) {
+  const done = task.status === "completed";
+  return (
+    <div
+      draggable
+      onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
+      className={`group flex max-w-full items-center gap-2 rounded-full border border-border bg-card pl-1 pr-2 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
+        done ? "opacity-50" : ""
+      }`}
+      title="Arraste para Hoje, Amanhã ou Depois"
+    >
+      <button
+        onClick={() => onToggle(task)}
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+          done
+            ? "border-foreground bg-foreground text-background"
+            : "border-border hover:border-foreground"
+        }`}
+        aria-label={done ? "Reabrir" : "Concluir"}
+      >
+        {done && <Check className="h-3 w-3" />}
+      </button>
+      <span className={`truncate ${done ? "line-through" : ""}`}>{task.title}</span>
+      <div className="ml-1 hidden items-center gap-1 text-muted-foreground group-hover:flex">
+        <button
+          onClick={() => onMove(task.id, "today")}
+          className="rounded px-1 text-[10px] uppercase tracking-wider hover:text-foreground"
+          title="Mover para Hoje"
+        >
+          hoje
+        </button>
+        <button
+          onClick={() => onDelete(task)}
+          className="rounded p-0.5 hover:bg-destructive/10 hover:text-destructive"
+          aria-label="Remover"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------- Day column ---------------------- */
+
+function DayColumn({
+  dayNumber,
+  weekday,
+  label,
+  accent,
+  tasks,
+  bucket,
+  onAdd,
+  loading,
+  emptyText,
+  ...handlers
+}: ColumnHandlers & {
+  dayNumber: number | null;
+  weekday: string;
+  label: string;
+  accent?: boolean;
+  tasks: Task[];
+  bucket: Bucket;
+  onAdd: (title: string) => void;
+  loading: boolean;
+  emptyText: string;
+}) {
+  const [drag, setDrag] = useState(false);
+  const pending = tasks.filter((t) => t.status === "pending");
+  const done = tasks.filter((t) => t.status === "completed");
+
+  return (
+    <section
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDrag(true);
+      }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDrag(false);
+        const id = e.dataTransfer.getData("text/task-id");
+        if (id) handlers.onMove(id, bucket);
+      }}
+      className={`flex min-h-[420px] flex-col rounded-2xl border bg-card transition-colors ${
+        drag
+          ? "border-foreground/40 bg-secondary/60"
+          : accent
+            ? "border-border"
+            : "border-border/70"
+      }`}
+    >
+      {/* Column header — big numeral as visual anchor */}
+      <header className="flex items-baseline justify-between gap-4 px-5 pt-5">
+        <div className="flex items-baseline gap-3">
+          {dayNumber !== null && (
+            <span
+              className={`tabular-nums leading-none ${
+                accent ? "text-5xl font-semibold" : "text-3xl font-medium text-muted-foreground"
+              }`}
+            >
+              {dayNumber}
+            </span>
+          )}
+          <div className="flex flex-col">
+            <span
+              className={`text-sm font-semibold ${
+                accent ? "text-foreground" : "text-foreground/80"
+              }`}
+            >
+              {label}
+            </span>
+            <span className="text-xs text-muted-foreground">{weekday}</span>
+          </div>
+        </div>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {pending.length}
+          {done.length > 0 && (
+            <span className="text-muted-foreground/60"> · {done.length}✓</span>
+          )}
+        </span>
+      </header>
+
+      <div className="px-5 pt-4">
+        <QuickAdd
+          placeholder={accent ? "O que move o dia?" : "Adicionar…"}
+          onAdd={onAdd}
+        />
+      </div>
+
+      {/* Task list — flat, separated by hairline only (no card-in-card) */}
+      <ul className="flex-1 px-2 pb-3 pt-2">
+        {loading && (
+          <li className="px-3 py-6 text-sm text-muted-foreground">Carregando…</li>
+        )}
+        {!loading && pending.length === 0 && done.length === 0 && (
+          <li className="px-3 py-10 text-sm text-muted-foreground">{emptyText}</li>
+        )}
+        {pending.map((t) =>
+          handlers.editingId === t.id ? (
+            <EditRow
+              key={t.id}
+              task={t}
+              onSave={(title, desc) => handlers.onSaveEdit(t.id, title, desc)}
+              onCancel={handlers.onCancelEdit}
             />
           ) : (
-            <TaskRow
-              key={task.id}
-              task={task}
-              onToggle={() =>
-                updateStatus.mutate({
-                  id: task.id,
-                  status: task.status === "pending" ? "completed" : "pending",
-                })
-              }
-              onEdit={() => setEditingId(task.id)}
-              onDelete={() => remove.mutate(task.id)}
-            />
+            <TaskRow key={t.id} task={t} accent={accent} {...handlers} />
           ),
         )}
+        {done.length > 0 && (
+          <li className="mt-3 px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/60">
+            Concluídas
+          </li>
+        )}
+        {done.map((t) => (
+          <TaskRow key={t.id} task={t} accent={accent} {...handlers} />
+        ))}
       </ul>
-    </div>
+    </section>
   );
 }
 
-function FilterTabs({ value, onChange }: { value: Filter; onChange: (v: Filter) => void }) {
-  const opts: { v: Filter; label: string }[] = [
-    { v: "all", label: "Todas" },
-    { v: "pending", label: "Pendentes" },
-    { v: "completed", label: "Concluídas" },
-  ];
-  return (
-    <div className="inline-flex rounded-lg border border-border bg-secondary/50 p-0.5 text-sm">
-      {opts.map((o) => (
-        <button
-          key={o.v}
-          onClick={() => onChange(o.v)}
-          className={`rounded-md px-3 py-1.5 transition-colors ${
-            value === o.v
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+/* ---------------------- Atoms ---------------------- */
 
-function NewTaskForm({
-  onSubmit,
-  pending,
+function QuickAdd({
+  placeholder,
+  onAdd,
 }: {
-  onSubmit: (input: { title: string; description: string }) => void;
-  pending: boolean;
+  placeholder: string;
+  onAdd: (title: string) => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [showDesc, setShowDesc] = useState(false);
-
+  const [v, setV] = useState("");
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) {
+    const title = v.trim();
+    if (!title) {
       toast.error("Informe um título.");
       return;
     }
-    onSubmit({ title, description });
-    setTitle("");
-    setDescription("");
-    setShowDesc(false);
+    onAdd(title);
+    setV("");
   }
-
   return (
     <form
       onSubmit={submit}
-      className="rounded-2xl border border-border bg-card p-4 shadow-sm"
+      className="flex items-center gap-2 rounded-lg border border-dashed border-border/70 bg-secondary/30 px-3 py-2 transition-colors focus-within:border-foreground/40 focus-within:bg-card"
     >
-      <div className="flex items-center gap-2">
-        <Plus className="h-4 w-4 text-muted-foreground" />
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Adicionar nova tarefa…"
-          className="border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:border-transparent px-0"
-          onFocus={() => setShowDesc(true)}
-        />
-        <Button type="submit" disabled={pending} size="sm">
-          Adicionar
-        </Button>
-      </div>
-      {showDesc && (
-        <Textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Descrição (opcional)"
-          rows={2}
-          className="mt-3 resize-none"
-        />
-      )}
+      <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+      <Input
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        placeholder={placeholder}
+        className="h-7 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
+      />
     </form>
   );
 }
 
 function TaskRow({
   task,
+  accent,
   onToggle,
   onEdit,
   onDelete,
-}: {
-  task: Task;
-  onToggle: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
+}: ColumnHandlers & { task: Task; accent?: boolean }) {
   const done = task.status === "completed";
   return (
-    <li className="group flex items-start gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-foreground/15">
+    <li
+      draggable
+      onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
+      className="group relative flex cursor-grab items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60 active:cursor-grabbing"
+    >
       <button
-        onClick={onToggle}
-        aria-label={done ? "Marcar como pendente" : "Concluir"}
-        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors ${
+        onClick={() => onToggle(task)}
+        aria-label={done ? "Reabrir" : "Concluir"}
+        className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border transition-colors ${
           done
-            ? "border-success bg-success text-success-foreground"
+            ? "border-foreground bg-foreground text-background"
             : "border-border hover:border-foreground"
         }`}
       >
-        {done && <Check className="h-3 w-3" />}
+        {done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
       </button>
       <div className="min-w-0 flex-1">
         <p
-          className={`text-sm font-medium ${done ? "text-muted-foreground line-through" : ""}`}
+          className={`text-sm leading-snug ${
+            done
+              ? "text-muted-foreground line-through"
+              : accent
+                ? "font-medium text-foreground"
+                : "text-foreground"
+          }`}
         >
           {task.title}
         </p>
-        {task.description && (
-          <p className="mt-1 text-sm text-muted-foreground">{task.description}</p>
+        {task.description && !done && (
+          <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+            {task.description}
+          </p>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         <button
-          onClick={onEdit}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+          onClick={() => onEdit(task)}
+          className="rounded p-1 text-muted-foreground hover:bg-card hover:text-foreground"
           aria-label="Editar"
         >
-          <Pencil className="h-3.5 w-3.5" />
+          <Pencil className="h-3 w-3" />
         </button>
         <button
-          onClick={onDelete}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => onDelete(task)}
+          className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
           aria-label="Remover"
         >
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="h-3 w-3" />
         </button>
       </div>
     </li>
   );
 }
 
-function EditTaskRow({
+function EditRow({
   task,
-  onCancel,
   onSave,
-  pending,
+  onCancel,
 }: {
   task: Task;
+  onSave: (title: string, description: string) => void;
   onCancel: () => void;
-  onSave: (input: { title: string; description: string }) => void;
-  pending: boolean;
 }) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
   return (
-    <li className="rounded-xl border border-foreground/20 bg-card p-4 shadow-sm">
-      <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-      <Textarea
+    <li className="rounded-lg border border-foreground/30 bg-card p-3 shadow-sm">
+      <Input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        autoFocus
+        className="h-8 text-sm"
+      />
+      <Input
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        placeholder="Descrição (opcional)"
-        rows={2}
-        className="mt-2 resize-none"
+        placeholder="Descrição"
+        className="mt-2 h-8 text-sm"
       />
-      <div className="mt-3 flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={onCancel}>
-          <X className="mr-1 h-4 w-4" />
-          Cancelar
+      <div className="mt-2 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          <X className="h-3.5 w-3.5" />
         </Button>
-        <Button size="sm" disabled={pending} onClick={() => onSave({ title, description })}>
-          <Check className="mr-1 h-4 w-4" />
+        <Button size="sm" onClick={() => onSave(title, description)}>
+          <Check className="mr-1 h-3.5 w-3.5" />
           Salvar
         </Button>
       </div>
@@ -295,10 +570,26 @@ function EditTaskRow({
   );
 }
 
-function EmptyState({ text }: { text: string }) {
-  return (
-    <li className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-      {text}
-    </li>
-  );
+/* ---------------------- Date helpers ---------------------- */
+
+function dayNumber(iso: string): number {
+  return Number(iso.split("-")[2]);
+}
+
+function weekdayLabel(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat("pt-BR", { weekday: "long" })
+    .format(new Date(y, m - 1, d))
+    .toLowerCase();
+}
+
+function weekRangeLabel(): string {
+  const now = new Date();
+  const day = now.getDay(); // 0 = sun
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((day + 6) % 7));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" });
+  return `Semana de ${fmt.format(monday)} – ${fmt.format(sunday)}`;
 }
