@@ -343,8 +343,11 @@ function WeekChip({
   onToggle,
   onMove,
   onDelete,
+  projectsById,
+  showProjectDot,
 }: ColumnHandlers & { task: Task }) {
   const done = task.status === "completed";
+  const project = task.project_id ? projectsById[task.project_id] : null;
   return (
     <div
       draggable
@@ -365,6 +368,14 @@ function WeekChip({
       >
         {done && <Check className="h-3 w-3" />}
       </button>
+      {showProjectDot && project && (
+        <span
+          aria-hidden
+          className="h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ background: projectColor(project) }}
+          title={project.name}
+        />
+      )}
       <span className={`truncate ${done ? "line-through" : ""}`}>{task.title}</span>
       <div className="ml-1 hidden items-center gap-1 text-muted-foreground group-hover:flex">
         <button
