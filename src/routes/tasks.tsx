@@ -600,19 +600,20 @@ function TaskRow({
   task,
   accent,
   onToggle,
-  onEdit,
-  onDelete,
   projectsById,
   showProjectDot,
+  ...handlers
 }: ColumnHandlers & { task: Task; accent?: boolean }) {
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
   return (
-    <li
-      draggable
-      onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
-      className="group relative flex cursor-grab items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60 active:cursor-grabbing"
-    >
+    <HoverCard openDelay={200} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <li
+          draggable
+          onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
+          className="group relative flex cursor-grab items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60 active:cursor-grabbing"
+        >
       <button
         onClick={() => onToggle(task)}
         aria-label={done ? "Reabrir" : "Concluir"}
@@ -652,23 +653,19 @@ function TaskRow({
           </p>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          onClick={() => onEdit(task)}
-          className="rounded p-1 text-muted-foreground hover:bg-card hover:text-foreground"
-          aria-label="Editar"
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
-        <button
-          onClick={() => onDelete(task)}
-          className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-          aria-label="Remover"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+      <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100">
+        <TaskActionsMenu
+          task={task}
+          projectsById={projectsById}
+          {...handlers}
+          onToggle={onToggle}
+          showProjectDot={showProjectDot}
+        />
       </div>
-    </li>
+        </li>
+      </HoverCardTrigger>
+      <TaskHoverPreview task={task} project={project} />
+    </HoverCard>
   );
 }
 
