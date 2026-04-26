@@ -173,6 +173,23 @@ function TasksPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const setProject = useMutation({
+    mutationFn: ({ id, projectId }: { id: string; projectId: string | null }) =>
+      setTaskProject(id, projectId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      toast.success("Projeto atualizado");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const setDate = useMutation({
+    mutationFn: ({ id, date }: { id: string; date: string | null }) =>
+      setTaskDueDate(id, date),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const pendingTotal = visibleTasks.filter((t) => t.status === "pending").length;
 
@@ -185,6 +202,9 @@ function TasksPage() {
     onEdit: (t: Task) => setEditingId(t.id),
     onDelete: (t: Task) => remove.mutate(t.id),
     onMove: (id: string, bucket: Bucket) => move.mutate({ id, bucket }),
+    onSetDate: (id: string, date: string | null) => setDate.mutate({ id, date }),
+    onSetProject: (id: string, projectId: string | null) =>
+      setProject.mutate({ id, projectId }),
     editingId,
     onSaveEdit: (id: string, title: string, description: string) => {
       update.mutate({ id, title, description });
@@ -192,6 +212,7 @@ function TasksPage() {
     },
     onCancelEdit: () => setEditingId(null),
     projectsById,
+    projects,
     showProjectDot: activeProject === "all",
   };
 
