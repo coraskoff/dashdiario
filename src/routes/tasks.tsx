@@ -276,6 +276,8 @@ interface ColumnHandlers {
   editingId: string | null;
   onSaveEdit: (id: string, title: string, description: string) => void;
   onCancelEdit: () => void;
+  projectsById: Record<string, { id: string; name: string; color: string | null }>;
+  showProjectDot: boolean;
 }
 
 function WeekStrip({
