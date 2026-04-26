@@ -446,7 +446,7 @@ function DayColumn({
         const id = e.dataTransfer.getData("text/task-id");
         if (id) handlers.onMove(id, bucket);
       }}
-      className={`flex min-h-[420px] flex-col rounded-2xl border bg-card transition-colors ${
+      className={`flex h-full min-h-[420px] w-full flex-col rounded-2xl border bg-card transition-colors ${
         drag
           ? "border-foreground/40 bg-secondary/60"
           : accent
