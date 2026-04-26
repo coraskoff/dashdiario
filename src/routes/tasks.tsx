@@ -20,6 +20,13 @@ import {
 } from "@/modules/tasks/buckets";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  createProject,
+  deleteProject,
+  fetchProjects,
+  projectColor,
+} from "@/modules/projects/api";
+import { ProjectTabs, type ActiveProject } from "@/components/ProjectTabs";
 
 export const Route = createFileRoute("/tasks")({
   head: () => ({
@@ -42,12 +49,64 @@ function TasksPage() {
     queryKey: ["tasks"],
     queryFn: fetchTasks,
   });
+  const { data: projects = [] } = useQuery({
+    queryKey: ["projects"],
+    queryFn: fetchProjects,
+  });
 
-  const buckets = useMemo(() => groupByBucket(tasks), [tasks]);
+  const [activeProject, setActiveProject] = useState<ActiveProject>("all");
+
+  // Filter tasks by active project tab
+  const visibleTasks = useMemo(() => {
+    if (activeProject === "all") return tasks;
+    return tasks.filter((t) => t.project_id === activeProject);
+  }, [tasks, activeProject]);
+
+  const buckets = useMemo(() => groupByBucket(visibleTasks), [visibleTasks]);
+
+  // Counts per project (pending only — that's what matters for scanning)
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: 0 };
+    for (const t of tasks) {
+      if (t.status !== "pending") continue;
+      c.all += 1;
+      if (t.project_id) c[t.project_id] = (c[t.project_id] ?? 0) + 1;
+    }
+    return c;
+  }, [tasks]);
+
+  // When creating a task, attach to active project (null when "all")
+  const newTaskProjectId = activeProject === "all" ? null : activeProject;
+
+  const projectsById = useMemo(
+    () => Object.fromEntries(projects.map((p) => [p.id, p])),
+    [projects],
+  );
 
   const create = useMutation({
     mutationFn: createTask,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const createProj = useMutation({
+    mutationFn: createProject,
+    onSuccess: (p) => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      setActiveProject(p.id);
+      toast.success(`Projeto “${p.name}” criado`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const removeProj = useMutation({
+    mutationFn: deleteProject,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      setActiveProject("all");
+      toast.success("Projeto removido");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -98,7 +157,7 @@ function TasksPage() {
   });
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const pendingTotal = tasks.filter((t) => t.status === "pending").length;
+  const pendingTotal = visibleTasks.filter((t) => t.status === "pending").length;
 
   const columnHandlers = {
     onToggle: (t: Task) =>
@@ -115,6 +174,8 @@ function TasksPage() {
       setEditingId(null);
     },
     onCancelEdit: () => setEditingId(null),
+    projectsById,
+    showProjectDot: activeProject === "all",
   };
 
   return (
@@ -135,12 +196,22 @@ function TasksPage() {
         </div>
       </header>
 
+      {/* Project tabs — keyboard navigable: Tab to focus, ←/→ to switch */}
+      <ProjectTabs
+        projects={projects}
+        active={activeProject}
+        onChange={setActiveProject}
+        onCreate={(name) => createProj.mutate(name)}
+        onDelete={(id) => removeProj.mutate(id)}
+        counts={counts}
+      />
+
       {/* "Semana" — horizontal strip on top: macro plan, distinct from daily focus */}
       <WeekStrip
         tasks={buckets.week}
         onAdd={(title) =>
           create.mutate(
-            { title, due_date: null },
+            { title, due_date: null, project_id: newTaskProjectId },
             { onSuccess: () => toast.success("Adicionada à Semana") },
           )
         }
@@ -158,7 +229,7 @@ function TasksPage() {
           tasks={buckets.today}
           bucket="today"
           onAdd={(title) =>
-            create.mutate({ title, due_date: todayIso() })
+            create.mutate({ title, due_date: todayIso(), project_id: newTaskProjectId })
           }
           loading={isLoading}
           {...columnHandlers}
@@ -171,7 +242,7 @@ function TasksPage() {
           tasks={buckets.tomorrow}
           bucket="tomorrow"
           onAdd={(title) =>
-            create.mutate({ title, due_date: tomorrowIso() })
+            create.mutate({ title, due_date: tomorrowIso(), project_id: newTaskProjectId })
           }
           loading={isLoading}
           {...columnHandlers}
@@ -184,7 +255,7 @@ function TasksPage() {
           tasks={buckets.later}
           bucket="later"
           onAdd={(title) =>
-            create.mutate({ title, due_date: bucketDueDate("later") })
+            create.mutate({ title, due_date: bucketDueDate("later"), project_id: newTaskProjectId })
           }
           loading={isLoading}
           {...columnHandlers}
