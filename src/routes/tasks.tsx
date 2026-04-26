@@ -2,12 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowRight, Calendar as CalendarIcon, Check, FolderInput, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   createTask,
   deleteTask,
   fetchTasks,
   setTaskDueDate,
+  setTaskProject,
   setTaskStatus,
   updateTask,
 } from "@/modules/tasks/api";
@@ -20,12 +21,28 @@ import {
 } from "@/modules/tasks/buckets";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import {
   createProject,
   deleteProject,
   fetchProjects,
   projectColor,
 } from "@/modules/projects/api";
+import type { Project } from "@/modules/projects/types";
 import { ProjectTabs, type ActiveProject } from "@/components/ProjectTabs";
 
 export const Route = createFileRoute("/tasks")({
@@ -156,6 +173,23 @@ function TasksPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const setProject = useMutation({
+    mutationFn: ({ id, projectId }: { id: string; projectId: string | null }) =>
+      setTaskProject(id, projectId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      toast.success("Projeto atualizado");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const setDate = useMutation({
+    mutationFn: ({ id, date }: { id: string; date: string | null }) =>
+      setTaskDueDate(id, date),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const pendingTotal = visibleTasks.filter((t) => t.status === "pending").length;
 
@@ -168,6 +202,9 @@ function TasksPage() {
     onEdit: (t: Task) => setEditingId(t.id),
     onDelete: (t: Task) => remove.mutate(t.id),
     onMove: (id: string, bucket: Bucket) => move.mutate({ id, bucket }),
+    onSetDate: (id: string, date: string | null) => setDate.mutate({ id, date }),
+    onSetProject: (id: string, projectId: string | null) =>
+      setProject.mutate({ id, projectId }),
     editingId,
     onSaveEdit: (id: string, title: string, description: string) => {
       update.mutate({ id, title, description });
@@ -175,6 +212,7 @@ function TasksPage() {
     },
     onCancelEdit: () => setEditingId(null),
     projectsById,
+    projects,
     showProjectDot: activeProject === "all",
   };
 
@@ -281,10 +319,13 @@ interface ColumnHandlers {
   onEdit: (t: Task) => void;
   onDelete: (t: Task) => void;
   onMove: (id: string, bucket: Bucket) => void;
+  onSetDate: (id: string, date: string | null) => void;
+  onSetProject: (id: string, projectId: string | null) => void;
   editingId: string | null;
   onSaveEdit: (id: string, title: string, description: string) => void;
   onCancelEdit: () => void;
   projectsById: Record<string, { id: string; name: string; color: string | null }>;
+  projects: Project[];
   showProjectDot: boolean;
 }
 
@@ -349,59 +390,53 @@ function WeekStrip({
 function WeekChip({
   task,
   onToggle,
-  onMove,
-  onDelete,
   projectsById,
   showProjectDot,
+  ...handlers
 }: ColumnHandlers & { task: Task }) {
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
   return (
-    <div
-      draggable
-      onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
-      className={`group flex max-w-full items-center gap-2 rounded-full border border-border bg-card pl-1 pr-2 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
-        done ? "opacity-50" : ""
-      }`}
-      title="Arraste para Hoje, Amanhã ou Depois"
-    >
-      <button
-        onClick={() => onToggle(task)}
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-          done
-            ? "border-foreground bg-foreground text-background"
-            : "border-border hover:border-foreground"
-        }`}
-        aria-label={done ? "Reabrir" : "Concluir"}
-      >
-        {done && <Check className="h-3 w-3" />}
-      </button>
-      {showProjectDot && project && (
-        <span
-          aria-hidden
-          className="h-1.5 w-1.5 shrink-0 rounded-full"
-          style={{ background: projectColor(project) }}
-          title={project.name}
-        />
-      )}
-      <span className={`truncate ${done ? "line-through" : ""}`}>{task.title}</span>
-      <div className="ml-1 hidden items-center gap-1 text-muted-foreground group-hover:flex">
-        <button
-          onClick={() => onMove(task.id, "today")}
-          className="rounded px-1 text-[10px] uppercase tracking-wider hover:text-foreground"
-          title="Mover para Hoje"
+    <HoverCard openDelay={150} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <div
+          draggable
+          onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
+          className={`group flex max-w-full items-center gap-2 rounded-full border border-border bg-card pl-1 pr-1 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
+            done ? "opacity-50" : ""
+          }`}
         >
-          hoje
-        </button>
-        <button
-          onClick={() => onDelete(task)}
-          className="rounded p-0.5 hover:bg-destructive/10 hover:text-destructive"
-          aria-label="Remover"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
-      </div>
-    </div>
+          <button
+            onClick={() => onToggle(task)}
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+              done
+                ? "border-foreground bg-foreground text-background"
+                : "border-border hover:border-foreground"
+            }`}
+            aria-label={done ? "Reabrir" : "Concluir"}
+          >
+            {done && <Check className="h-3 w-3" />}
+          </button>
+          {showProjectDot && project && (
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ background: projectColor(project) }}
+              title={project.name}
+            />
+          )}
+          <span className={`truncate px-1 ${done ? "line-through" : ""}`}>{task.title}</span>
+          <TaskActionsMenu
+            task={task}
+            projectsById={projectsById}
+            {...handlers}
+            onToggle={onToggle}
+            showProjectDot={showProjectDot}
+          />
+        </div>
+      </HoverCardTrigger>
+      <TaskHoverPreview task={task} project={project} />
+    </HoverCard>
   );
 }
 
@@ -565,19 +600,20 @@ function TaskRow({
   task,
   accent,
   onToggle,
-  onEdit,
-  onDelete,
   projectsById,
   showProjectDot,
+  ...handlers
 }: ColumnHandlers & { task: Task; accent?: boolean }) {
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
   return (
-    <li
-      draggable
-      onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
-      className="group relative flex cursor-grab items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60 active:cursor-grabbing"
-    >
+    <HoverCard openDelay={200} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <li
+          draggable
+          onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
+          className="group relative flex cursor-grab items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60 active:cursor-grabbing"
+        >
       <button
         onClick={() => onToggle(task)}
         aria-label={done ? "Reabrir" : "Concluir"}
@@ -617,23 +653,19 @@ function TaskRow({
           </p>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          onClick={() => onEdit(task)}
-          className="rounded p-1 text-muted-foreground hover:bg-card hover:text-foreground"
-          aria-label="Editar"
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
-        <button
-          onClick={() => onDelete(task)}
-          className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-          aria-label="Remover"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+      <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100">
+        <TaskActionsMenu
+          task={task}
+          projectsById={projectsById}
+          {...handlers}
+          onToggle={onToggle}
+          showProjectDot={showProjectDot}
+        />
       </div>
-    </li>
+        </li>
+      </HoverCardTrigger>
+      <TaskHoverPreview task={task} project={project} />
+    </HoverCard>
   );
 }
 
@@ -679,6 +711,186 @@ function EditRow({
 
 function dayNumber(iso: string): number {
   return Number(iso.split("-")[2]);
+}
+
+/* ---------------------- Hover preview + Actions menu ---------------------- */
+
+function TaskHoverPreview({
+  task,
+  project,
+}: {
+  task: Task;
+  project: { id: string; name: string; color: string | null } | null;
+}) {
+  return (
+    <HoverCardContent side="top" align="start" className="w-72 p-3">
+      <div className="space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-medium leading-snug">{task.title}</p>
+          {project && (
+            <span className="flex shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span
+                aria-hidden
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: projectColor(project) }}
+              />
+              {project.name}
+            </span>
+          )}
+        </div>
+        <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+          {task.due_date ? formatFullDate(task.due_date) : "Sem data — Semana"}
+        </p>
+        {task.description ? (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {task.description}
+          </p>
+        ) : (
+          <p className="text-xs italic text-muted-foreground/60">Sem descrição.</p>
+        )}
+      </div>
+    </HoverCardContent>
+  );
+}
+
+function TaskActionsMenu({
+  task,
+  onEdit,
+  onDelete,
+  onMove,
+  onSetDate,
+  onSetProject,
+  projects,
+}: ColumnHandlers & { task: Task }) {
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            onClick={(e) => e.stopPropagation()}
+            className="rounded p-1 text-muted-foreground hover:bg-card hover:text-foreground focus:outline-none focus-visible:text-foreground"
+            aria-label="Ações"
+          >
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem onSelect={() => onEdit(task)}>
+            <Pencil className="mr-2 h-3.5 w-3.5" />
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setDatePickerOpen(true)}>
+            <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+            Escolher data…
+          </DropdownMenuItem>
+
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <ArrowRight className="mr-2 h-3.5 w-3.5" />
+              Mover para
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "week")}>
+                Semana
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "today")}>
+                Hoje
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "tomorrow")}>
+                Amanhã
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "later")}>
+                Depois
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <FolderInput className="mr-2 h-3.5 w-3.5" />
+              Projeto
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+              <DropdownMenuItem onSelect={() => onSetProject(task.id, null)}>
+                <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                Sem projeto
+                {!task.project_id && <Check className="ml-auto h-3.5 w-3.5" />}
+              </DropdownMenuItem>
+              {projects.length > 0 && <DropdownMenuSeparator />}
+              {projects.map((p) => (
+                <DropdownMenuItem
+                  key={p.id}
+                  onSelect={() => onSetProject(task.id, p.id)}
+                >
+                  <span
+                    aria-hidden
+                    className="mr-2 inline-block h-1.5 w-1.5 rounded-full"
+                    style={{ background: projectColor(p) }}
+                  />
+                  {p.name}
+                  {task.project_id === p.id && <Check className="ml-auto h-3.5 w-3.5" />}
+                </DropdownMenuItem>
+              ))}
+              {projects.length === 0 && (
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                  Nenhum projeto criado.
+                </DropdownMenuLabel>
+              )}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => onDelete(task)}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="mr-2 h-3.5 w-3.5" />
+            Excluir
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Standalone popover for the calendar so it survives the menu closing */}
+      <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+        <PopoverTrigger asChild>
+          <span className="sr-only" aria-hidden />
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-auto p-0">
+          <Calendar
+            mode="single"
+            selected={task.due_date ? parseIsoDate(task.due_date) : undefined}
+            onSelect={(d) => {
+              if (d) onSetDate(task.id, toIsoLocal(d));
+              setDatePickerOpen(false);
+            }}
+            initialFocus
+            className={cn("p-3 pointer-events-auto")}
+          />
+        </PopoverContent>
+      </Popover>
+    </>
+  );
+}
+
+function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function toIsoLocal(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function formatFullDate(iso: string): string {
+  const d = parseIsoDate(iso);
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  }).format(d);
 }
 
 function dayAfterTomorrowIso(): string {
