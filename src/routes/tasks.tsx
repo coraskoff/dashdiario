@@ -249,8 +249,8 @@ function TasksPage() {
           emptyText="Nada agendado."
         />
         <DayColumn
-          dayNumber={null}
-          weekday="próximos dias"
+          dayNumber={dayNumber(dayAfterTomorrowIso())}
+          weekday={weekdayLabel(dayAfterTomorrowIso())}
           label="Depois"
           tasks={buckets.later}
           bucket="later"
@@ -671,6 +671,14 @@ function EditRow({
 
 function dayNumber(iso: string): number {
   return Number(iso.split("-")[2]);
+}
+
+function dayAfterTomorrowIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 2);
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
 }
 
 function weekdayLabel(iso: string): string {
