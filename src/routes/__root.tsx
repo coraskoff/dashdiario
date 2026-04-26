@@ -1,4 +1,12 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import {
+  Outlet,
+  Link,
+  createRootRouteWithContext,
+  HeadContent,
+  Scripts,
+} from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
 
@@ -24,19 +32,28 @@ function NotFoundComponent() {
   );
 }
 
-export const Route = createRootRoute({
+interface RouterContext {
+  queryClient: QueryClient;
+}
+
+export const Route = createRootRouteWithContext<RouterContext>()({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Foco — Tarefas e Finanças" },
+      {
+        name: "description",
+        content:
+          "Gestão pessoal simples e elegante: organize suas tarefas e controle suas finanças em um só lugar.",
+      },
+      { property: "og:title", content: "Foco — Tarefas e Finanças" },
+      {
+        property: "og:description",
+        content: "Gestão pessoal simples e elegante para tarefas e finanças.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       {
@@ -65,5 +82,46 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  return <Outlet />;
+  const { queryClient } = Route.useRouteContext();
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppLayout>
+        <Outlet />
+      </AppLayout>
+      <Toaster richColors position="top-center" />
+    </QueryClientProvider>
+  );
+}
+
+function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
+          <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
+            <span className="inline-block h-2 w-2 rounded-full bg-foreground" />
+            Foco
+          </Link>
+          <nav className="flex items-center gap-1 text-sm">
+            <NavLink to="/">Visão geral</NavLink>
+            <NavLink to="/tasks">Tarefas</NavLink>
+            <NavLink to="/finance">Finanças</NavLink>
+          </nav>
+        </div>
+      </header>
+      <main className="mx-auto max-w-5xl px-6 py-10">{children}</main>
+    </div>
+  );
+}
+
+function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <Link
+      to={to}
+      activeOptions={{ exact: to === "/" }}
+      className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground data-[status=active]:text-foreground data-[status=active]:bg-secondary"
+    >
+      {children}
+    </Link>
+  );
 }
