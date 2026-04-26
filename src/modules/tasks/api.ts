@@ -16,6 +16,7 @@ export async function fetchTasks(): Promise<Task[]> {
     .from("tasks")
     .select("*")
     .order("status", { ascending: true })
+    .order("due_date", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as Task[];
@@ -28,6 +29,7 @@ export async function createTask(input: TaskInput): Promise<Task> {
     .insert({
       title: normalizeTitle(input.title),
       description: input.description?.trim() || null,
+      due_date: input.due_date ?? null,
     })
     .select()
     .single();
@@ -42,7 +44,19 @@ export async function updateTask(id: string, input: TaskInput): Promise<Task> {
     .update({
       title: normalizeTitle(input.title),
       description: input.description?.trim() || null,
+      due_date: input.due_date ?? null,
     })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Task;
+}
+
+export async function setTaskDueDate(id: string, dueDate: string | null): Promise<Task> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({ due_date: dueDate })
     .eq("id", id)
     .select()
     .single();
