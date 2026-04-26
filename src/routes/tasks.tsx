@@ -219,8 +219,11 @@ function TasksPage() {
         {...columnHandlers}
       />
 
-      {/* Day columns — asymmetric grid: Today is dominant */}
-      <div className="grid gap-5 md:grid-cols-[1.6fr_1fr_1fr]">
+      {/* Day columns — desktop: asymmetric grid (Today dominant). Mobile: snap-scroll carousel. */}
+      <div
+        className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:snap-none md:gap-5 md:overflow-visible md:px-0 md:pb-0 md:grid-cols-[1.6fr_1fr_1fr]"
+      >
+        <div className="w-[88vw] shrink-0 snap-start md:w-auto">
         <DayColumn
           dayNumber={dayNumber(todayIso())}
           weekday={weekdayLabel(todayIso())}
@@ -235,6 +238,8 @@ function TasksPage() {
           {...columnHandlers}
           emptyText="Dia limpo. Capriche em uma coisa só."
         />
+        </div>
+        <div className="w-[88vw] shrink-0 snap-start md:w-auto">
         <DayColumn
           dayNumber={dayNumber(tomorrowIso())}
           weekday={weekdayLabel(tomorrowIso())}
@@ -248,6 +253,8 @@ function TasksPage() {
           {...columnHandlers}
           emptyText="Nada agendado."
         />
+        </div>
+        <div className="w-[88vw] shrink-0 snap-start md:w-auto">
         <DayColumn
           dayNumber={dayNumber(dayAfterTomorrowIso())}
           weekday={weekdayLabel(dayAfterTomorrowIso())}
@@ -261,6 +268,7 @@ function TasksPage() {
           {...columnHandlers}
           emptyText="Sem compromissos."
         />
+        </div>
       </div>
     </div>
   );
@@ -438,7 +446,7 @@ function DayColumn({
         const id = e.dataTransfer.getData("text/task-id");
         if (id) handlers.onMove(id, bucket);
       }}
-      className={`flex min-h-[420px] flex-col rounded-2xl border bg-card transition-colors ${
+      className={`flex h-full min-h-[420px] w-full flex-col rounded-2xl border bg-card transition-colors ${
         drag
           ? "border-foreground/40 bg-secondary/60"
           : accent
