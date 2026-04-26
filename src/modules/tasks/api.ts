@@ -66,6 +66,17 @@ export async function setTaskDueDate(id: string, dueDate: string | null): Promis
   return data as Task;
 }
 
+export async function setTaskProject(id: string, projectId: string | null): Promise<Task> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({ project_id: projectId })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Task;
+}
+
 export async function setTaskStatus(id: string, status: TaskStatus): Promise<Task> {
   const { data, error } = await supabase
     .from("tasks")
