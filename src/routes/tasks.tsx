@@ -402,7 +402,7 @@ function WeekStrip({
 
       {/* Horizontal flowing chips — pending only; completed live in the archive sheet */}
       <div className="mt-4 flex flex-wrap gap-2">
-        {loading && <span className="text-sm text-muted-foreground">Carregando…</span>}
+        {loading && <Pulse size={10} className="ml-1" />}
         {!loading && tasks.filter((t) => t.status === "pending").length === 0 && (
           <span className="text-sm text-muted-foreground">
             Use este espaço para o que quer fazer “em algum momento”.
@@ -558,7 +558,9 @@ function DayColumn({
       {/* Task list — flat, separated by hairline only (no card-in-card) */}
       <ul className="flex-1 px-2 pb-3 pt-2">
         {loading && (
-          <li className="px-3 py-6 text-sm text-muted-foreground">Carregando…</li>
+          <li className="flex items-center justify-center px-3 py-8">
+            <Pulse size={10} />
+          </li>
         )}
         {!loading && pending.length === 0 && (
           <li className="px-3 py-10 text-sm text-muted-foreground">{emptyText}</li>
