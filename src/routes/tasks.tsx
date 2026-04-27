@@ -791,6 +791,7 @@ function MiniDayCard({
   tasks,
   onAdd,
   onToggle,
+  onOpen,
   onMove,
   projectsById,
   showProjectDot,
@@ -844,7 +845,12 @@ function MiniDayCard({
                 key={t.id}
                 draggable
                 onDragStart={(e) => e.dataTransfer.setData("text/task-id", t.id)}
-                className="group flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-foreground/80 hover:bg-secondary/60"
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (target.closest("button, a, [role='menuitem']")) return;
+                  onOpen(t);
+                }}
+                className="group flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-xs text-foreground/80 hover:bg-secondary/60"
               >
                 <button
                   onClick={() => onToggle(t)}
