@@ -141,12 +141,14 @@ function FinancePage() {
         </div>
       ) : (
         <>
-          {/* ---------- Headline numbers ---------- */}
-          <HeadlineNumbers
-            balance={summary.balance}
-            planned={summary.planned}
-            realized={summary.realized}
-            projected={summary.projected}
+          {/* ---------- Headline metrics ---------- */}
+          <MetricsBar
+            income={summary.income}
+            expenseTotal={summary.expenseTotal}
+            plannedVariables={summary.planned}
+            currentVariables={summary.projected}
+            plannedDaily={summary.plannedDailyTotal}
+            currentDaily={summary.currentDailyTotal}
           />
 
           {/* ---------- Plan vs Real per category ---------- */}
@@ -220,75 +222,139 @@ function MonthSwitcher({
 }
 
 /* ============================================================
- * Headline numbers
- * Intentional layout: one dominant figure (balance), three quiet stats.
- * Avoids the generic 4-card grid.
+ * Metrics bar
+ * Four blocks aligned in a single horizontal row:
+ *   Entradas | Saídas | Variáveis (prévia ↔ atual) | Média diária (prévia ↔ atual)
+ * The "atual" value is the headline; the "prévia" sits below as context with a
+ * small delta. Subtractive design — no cards, just rhythm and dividers.
  * ============================================================ */
 
-function HeadlineNumbers({
-  balance,
-  planned,
-  realized,
-  projected,
+function MetricsBar({
+  income,
+  expenseTotal,
+  plannedVariables,
+  currentVariables,
+  plannedDaily,
+  currentDaily,
 }: {
-  balance: number;
-  planned: number;
-  realized: number;
-  projected: number;
+  income: number;
+  expenseTotal: number;
+  plannedVariables: number;
+  currentVariables: number;
+  plannedDaily: number;
+  currentDaily: number;
 }) {
-  const pace = planned > 0 ? projected / planned : 0;
-  const overBudget = projected > planned && planned > 0;
-
   return (
-    <section className="grid gap-10 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:items-end">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          Saldo do mês
-        </p>
-        <p
-          className={cn(
-            "mt-3 text-6xl font-semibold tracking-tight tabular-nums",
-            balance < 0 ? "text-expense" : "text-foreground",
-          )}
-        >
-          {formatCurrency(balance)}
-        </p>
-      </div>
-
-      <dl className="grid grid-cols-3 divide-x divide-border rounded-2xl border border-border bg-card">
-        <Stat label="Planejado" value={formatCurrency(planned)} />
-        <Stat label="Realizado" value={formatCurrency(realized)} accent={realized > planned && planned > 0 ? "expense" : undefined} />
-        <Stat
-          label="Projeção"
-          value={formatCurrency(projected)}
-          accent={overBudget ? "expense" : "income"}
-          hint={planned > 0 ? `${Math.round(pace * 100)}% do plano` : undefined}
-        />
-      </dl>
+    <section className="grid grid-cols-2 gap-x-2 gap-y-6 rounded-2xl border border-border bg-card p-6 md:grid-cols-4 md:gap-x-0 md:divide-x md:divide-border md:p-0">
+      <Metric label="Entradas" value={income} tone="income" className="md:px-6 md:py-6" />
+      <Metric
+        label="Saídas"
+        value={expenseTotal}
+        tone="expense"
+        prefix="−"
+        className="md:px-6 md:py-6"
+      />
+      <PairedMetric
+        label="Variáveis"
+        previa={plannedVariables}
+        atual={currentVariables}
+        invert
+        className="md:px-6 md:py-6"
+      />
+      <PairedMetric
+        label="Média diária"
+        previa={plannedDaily}
+        atual={currentDaily}
+        className="md:px-6 md:py-6"
+      />
     </section>
   );
 }
 
-function Stat({
+function Metric({
   label,
   value,
-  accent,
-  hint,
+  tone,
+  prefix,
+  className,
 }: {
   label: string;
-  value: string;
-  accent?: "income" | "expense";
-  hint?: string;
+  value: number;
+  tone?: "income" | "expense";
+  prefix?: string;
+  className?: string;
 }) {
   const color =
-    accent === "income" ? "text-income" : accent === "expense" ? "text-expense" : "text-foreground";
+    tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : "text-foreground";
   return (
-    <div className="px-5 py-4">
-      <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+    <div className={cn("min-w-0", className)}>
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
         {label}
-      </dt>
-      <dd className={cn("mt-1 text-lg font-semibold tabular-nums", color)}>{value}</dd>
-      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
+      </p>
+      <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", color)}>
+        {prefix}
+        {formatCurrency(value)}
+      </p>
+      {/* keep vertical rhythm aligned with PairedMetric */}
+      <p className="mt-1 h-4 text-[11px] text-muted-foreground" aria-hidden />
+    </div>
+  );
+}
+
+/**
+ * Shows "atual" big with "prévia" small underneath.
+ * If `invert` is true, going OVER the prévia is bad (red); otherwise UNDER is good
+ * (less spending = green for "Média diária"; more leftover = green for "Variáveis").
+ * For both metrics here, "atual < prévia" means under budget → green.
+ */
+function PairedMetric({
+  label,
+  previa,
+  atual,
+  invert,
+  className,
+}: {
+  label: string;
+  previa: number;
+  atual: number;
+  /** present for API symmetry; both metrics treat atual<prévia as positive */
+  invert?: boolean;
+  className?: string;
+}) {
+  void invert;
+  const delta = atual - previa;
+  const hasPlan = previa > 0;
+  const isOver = delta > 0.005;
+  const isUnder = delta < -0.005;
+  const color = !hasPlan
+    ? "text-foreground"
+    : isOver
+      ? "text-expense"
+      : isUnder
+        ? "text-income"
+        : "text-foreground";
+  return (
+    <div className={cn("min-w-0", className)}>
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </p>
+      <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", color)}>
+        {formatCurrency(atual)}
+      </p>
+      <p className="mt-1 h-4 truncate text-[11px] text-muted-foreground tabular-nums">
+        {hasPlan ? (
+          <>
+            prévia {formatCurrency(previa)}
+            {(isOver || isUnder) && (
+              <span className={cn("ml-1.5", isOver ? "text-expense" : "text-income")}>
+                {isOver ? "↑" : "↓"} {formatCurrency(Math.abs(delta))}
+              </span>
+            )}
+          </>
+        ) : (
+          "sem planejamento"
+        )}
+      </p>
     </div>
   );
 }
