@@ -90,6 +90,21 @@ export const Route = createFileRoute("/finance")({
 
 function FinancePage() {
   const [month, setMonth] = useState<string>(currentMonth());
+  const [tab, setTab] = useState<"overview" | "categories">("overview");
+  const [quickAdd, setQuickAdd] = useState<null | "income" | "expense">(null);
+  const [variablesOpen, setVariablesOpen] = useState(false);
+
+  const qcRoot = useQueryClient();
+
+  const createTx = useMutation({
+    mutationFn: createTransaction,
+    onSuccess: () => {
+      qcRoot.invalidateQueries({ queryKey: ["fin", "transactions"] });
+      setQuickAdd(null);
+      toast.success("Lançamento adicionado");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const cats = useQuery({ queryKey: ["fin", "categories"], queryFn: fetchCategories });
   const tx = useQuery({ queryKey: ["fin", "transactions"], queryFn: fetchTransactions });
@@ -128,6 +143,20 @@ function FinancePage() {
 
   const loading = cats.isLoading || plans.isLoading || daily.isLoading || tx.isLoading;
 
+  // Swipe entre abas no mobile
+  const touchStartX = useRef<number | null>(null);
+  function onTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0].clientX;
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current == null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(dx) < 60) return;
+    if (dx < 0 && tab === "overview") setTab("categories");
+    if (dx > 0 && tab === "categories") setTab("overview");
+  }
+
   return (
     <div className="space-y-12 pb-16">
       {/* ---------- Header ---------- */}
@@ -148,39 +177,97 @@ function FinancePage() {
           <Pulse />
         </div>
       ) : (
-        <>
-          {/* ---------- Headline metrics ---------- */}
-          <MetricsBar
-            income={summary.income}
-            expenseTotal={summary.expenseTotal}
-            plannedVariables={summary.planned}
-            currentVariables={summary.projected}
-            plannedDaily={summary.plannedDailyTotal}
-            currentDaily={summary.currentDailyTotal}
-          />
+        <Tabs value={tab} onValueChange={(v) => setTab(v as "overview" | "categories")}>
+          <TabsList className="h-10 w-full justify-start gap-1 rounded-full bg-secondary/60 p-1 md:w-auto">
+            <TabsTrigger value="overview" className="flex-1 rounded-full px-4 md:flex-none">
+              Visão geral
+            </TabsTrigger>
+            <TabsTrigger value="categories" className="flex-1 rounded-full px-4 md:flex-none">
+              Por categoria
+            </TabsTrigger>
+          </TabsList>
 
-          {/* ---------- Plan vs Real per category ---------- */}
-          <PlanSection
-            month={month}
-            categories={expenseCategories}
-            breakdowns={breakdowns}
-            allCategories={categories}
-          />
+          <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+            <TabsContent value="overview" className="mt-8 space-y-12">
+              <MetricsBar
+                income={summary.income}
+                expenseTotal={summary.expenseTotal}
+                plannedVariables={summary.planned}
+                currentVariables={summary.projected}
+                plannedDaily={summary.plannedDailyTotal}
+                currentDaily={summary.currentDailyTotal}
+                onAddIncome={() => setQuickAdd("income")}
+                onAddExpense={() => setQuickAdd("expense")}
+                onAddVariable={() => setVariablesOpen(true)}
+              />
 
-          {/* ---------- Quick daily entry ---------- */}
-          <DailyEntrySection
-            month={month}
-            categories={expenseCategories}
-            expenses={monthExpenses}
-          />
+              <DailyEntrySection
+                month={month}
+                categories={expenseCategories}
+                expenses={monthExpenses}
+              />
 
-          {/* ---------- Income / one-off ---------- */}
-          <TransactionsSection
-            month={month}
-            categories={categories}
-            transactions={monthTransactions}
-          />
-        </>
+              <TransactionsSection
+                month={month}
+                categories={categories}
+                transactions={monthTransactions}
+              />
+            </TabsContent>
+
+            <TabsContent value="categories" className="mt-8">
+              <PlanSection
+                month={month}
+                categories={expenseCategories}
+                breakdowns={breakdowns}
+                allCategories={categories}
+              />
+            </TabsContent>
+          </div>
+
+          {/* Quick add modals via "+" nas métricas */}
+          <Dialog open={quickAdd !== null} onOpenChange={(o) => !o && setQuickAdd(null)}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>
+                  {quickAdd === "income" ? "Nova entrada" : "Nova saída"}
+                </DialogTitle>
+                <DialogDescription>
+                  {quickAdd === "income"
+                    ? "Salário, freela, reembolso — o que entrou."
+                    : "Despesa pontual fora do plano mensal."}
+                </DialogDescription>
+              </DialogHeader>
+              {quickAdd && (
+                <QuickTransactionForm
+                  month={month}
+                  categories={categories}
+                  initialType={quickAdd}
+                  onSubmit={(input) => createTx.mutate(input)}
+                  onCancel={() => setQuickAdd(null)}
+                  pending={createTx.isPending}
+                  hideTypeToggle
+                />
+              )}
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={variablesOpen} onOpenChange={setVariablesOpen}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Definir teto de variáveis</DialogTitle>
+                <DialogDescription>
+                  Ajuste rápido por categoria. Mais detalhes na aba Por categoria.
+                </DialogDescription>
+              </DialogHeader>
+              <VariablesQuickEdit
+                month={month}
+                categories={expenseCategories}
+                breakdowns={breakdowns}
+                onClose={() => setVariablesOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
+        </Tabs>
       )}
     </div>
   );
