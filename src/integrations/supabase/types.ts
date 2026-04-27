@@ -14,84 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
-      categories: {
+      finance_days: {
         Row: {
           created_at: string
+          date: string
+          diario_override: number | null
+          entrada: number
+          entrada_label: string | null
           id: string
-          is_variable: boolean
-          name: string
-          type: Database["public"]["Enums"]["financial_type"]
+          saida: number
+          saida_label: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
+          date: string
+          diario_override?: number | null
+          entrada?: number
+          entrada_label?: string | null
           id?: string
-          is_variable?: boolean
-          name: string
-          type: Database["public"]["Enums"]["financial_type"]
+          saida?: number
+          saida_label?: string | null
           updated_at?: string
         }
         Update: {
-          created_at?: string
-          id?: string
-          is_variable?: boolean
-          name?: string
-          type?: Database["public"]["Enums"]["financial_type"]
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      daily_expenses: {
-        Row: {
-          amount: number
-          category_id: string
-          created_at: string
-          date: string
-          id: string
-          updated_at: string
-        }
-        Insert: {
-          amount: number
-          category_id: string
-          created_at?: string
-          date: string
-          id?: string
-          updated_at?: string
-        }
-        Update: {
-          amount?: number
-          category_id?: string
           created_at?: string
           date?: string
+          diario_override?: number | null
+          entrada?: number
+          entrada_label?: string | null
           id?: string
+          saida?: number
+          saida_label?: string | null
           updated_at?: string
         }
         Relationships: []
       }
-      monthly_plans: {
+      finance_months: {
         Row: {
-          category_id: string
           created_at: string
           id: string
           month: string
-          planned_amount: number
           updated_at: string
+          variable_amount: number
         }
         Insert: {
-          category_id: string
           created_at?: string
           id?: string
           month: string
-          planned_amount: number
           updated_at?: string
+          variable_amount?: number
         }
         Update: {
-          category_id?: string
           created_at?: string
           id?: string
           month?: string
-          planned_amount?: number
           updated_at?: string
+          variable_amount?: number
         }
         Relationships: []
       }
@@ -163,47 +142,6 @@ export type Database = {
           },
         ]
       }
-      transactions: {
-        Row: {
-          amount: number
-          category_id: string | null
-          created_at: string
-          description: string | null
-          id: string
-          occurred_at: string
-          type: Database["public"]["Enums"]["financial_type"]
-          updated_at: string
-        }
-        Insert: {
-          amount: number
-          category_id?: string | null
-          created_at?: string
-          description?: string | null
-          id?: string
-          occurred_at?: string
-          type: Database["public"]["Enums"]["financial_type"]
-          updated_at?: string
-        }
-        Update: {
-          amount?: number
-          category_id?: string | null
-          created_at?: string
-          description?: string | null
-          id?: string
-          occurred_at?: string
-          type?: Database["public"]["Enums"]["financial_type"]
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "transactions_category_id_fkey"
-            columns: ["category_id"]
-            isOneToOne: false
-            referencedRelation: "categories"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       [_ in never]: never
@@ -212,7 +150,6 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      financial_type: "income" | "expense"
       task_status: "pending" | "completed"
     }
     CompositeTypes: {
@@ -341,7 +278,6 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      financial_type: ["income", "expense"],
       task_status: ["pending", "completed"],
     },
   },
