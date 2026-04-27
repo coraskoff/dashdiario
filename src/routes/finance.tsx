@@ -991,6 +991,8 @@ function QuickTransactionForm({
   onSubmit,
   onCancel,
   pending,
+  initialType,
+  hideTypeToggle,
 }: {
   month: string;
   categories: Category[];
@@ -1003,8 +1005,10 @@ function QuickTransactionForm({
   }) => void;
   onCancel: () => void;
   pending: boolean;
+  initialType?: FinancialType;
+  hideTypeToggle?: boolean;
 }) {
-  const [type, setType] = useState<FinancialType>("income");
+  const [type, setType] = useState<FinancialType>(initialType ?? "income");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const today = todayIso();
@@ -1035,6 +1039,7 @@ function QuickTransactionForm({
       className="space-y-3 rounded-2xl border border-border bg-card p-4"
     >
       <div className="flex flex-wrap items-center gap-2">
+        {!hideTypeToggle && (
         <div className="inline-flex rounded-full border border-border bg-secondary/40 p-0.5 text-xs">
           {(["income", "expense"] as const).map((t) => (
             <button
@@ -1057,6 +1062,7 @@ function QuickTransactionForm({
             </button>
           ))}
         </div>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
             Cancelar
