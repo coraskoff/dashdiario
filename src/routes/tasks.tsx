@@ -399,17 +399,19 @@ function WeekStrip({
 
       <QuickAdd placeholder="Algo para esta semana…" onAdd={onAdd} />
 
-      {/* Horizontal flowing chips — different from vertical day columns */}
+      {/* Horizontal flowing chips — pending only; completed live in the archive sheet */}
       <div className="mt-4 flex flex-wrap gap-2">
         {loading && <span className="text-sm text-muted-foreground">Carregando…</span>}
-        {!loading && tasks.length === 0 && (
+        {!loading && tasks.filter((t) => t.status === "pending").length === 0 && (
           <span className="text-sm text-muted-foreground">
             Use este espaço para o que quer fazer “em algum momento”.
           </span>
         )}
-        {tasks.map((t) => (
-          <WeekChip key={t.id} task={t} {...handlers} />
-        ))}
+        {tasks
+          .filter((t) => t.status === "pending")
+          .map((t) => (
+            <WeekChip key={t.id} task={t} {...handlers} />
+          ))}
       </div>
     </section>
   );
