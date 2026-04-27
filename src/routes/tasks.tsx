@@ -294,7 +294,7 @@ function TasksPage() {
 
       {/* "Semana" — horizontal strip on top: macro plan, distinct from daily focus */}
       <WeekStrip
-        tasks={buckets.week}
+        tasks={weekNoDate}
         onAdd={(title) =>
           create.mutate(
             { title, due_date: null, project_id: newTaskProjectId },
@@ -356,6 +356,38 @@ function TasksPage() {
         />
         </div>
       </div>
+
+      {/* Resto da semana — hierarquia menor: linha separadora + grade densa */}
+      {restIsos.length > 0 && (
+        <section className="pt-2">
+          <div className="flex items-center gap-3 pb-3">
+            <div className="h-px flex-1 bg-border/70" />
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Resto da semana
+            </span>
+            <div className="h-px flex-1 bg-border/70" />
+          </div>
+          <div
+            className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:snap-none md:overflow-visible md:px-0 md:pb-0"
+            style={{
+              gridTemplateColumns: `repeat(${restIsos.length}, minmax(0, 1fr))`,
+              display: "grid",
+            }}
+          >
+            {restIsos.map((iso) => (
+              <MiniDayCard
+                key={iso}
+                iso={iso}
+                tasks={tasksByDate[iso] ?? []}
+                onAdd={(title) =>
+                  create.mutate({ title, due_date: iso, project_id: newTaskProjectId })
+                }
+                {...columnHandlers}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
