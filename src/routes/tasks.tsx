@@ -761,44 +761,6 @@ function dayNumber(iso: string): number {
 
 /* ---------------------- Hover preview + Actions menu ---------------------- */
 
-function TaskHoverPreview({
-  task,
-  project,
-}: {
-  task: Task;
-  project: { id: string; name: string; color: string | null } | null;
-}) {
-  return (
-    <HoverCardContent side="top" align="start" className="w-72 p-3">
-      <div className="space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-sm font-medium leading-snug">{task.title}</p>
-          {project && (
-            <span className="flex shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-              <span
-                aria-hidden
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ background: projectColor(project) }}
-              />
-              {project.name}
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-          {task.due_date ? formatFullDate(task.due_date) : "Sem data — Semana"}
-        </p>
-        {task.description ? (
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {task.description}
-          </p>
-        ) : (
-          <p className="text-xs italic text-muted-foreground/60">Sem descrição.</p>
-        )}
-      </div>
-    </HoverCardContent>
-  );
-}
-
 function TaskActionsMenu({
   task,
   onEdit,
