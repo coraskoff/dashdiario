@@ -34,6 +34,14 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+} from "@/components/ui/drawer";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -221,6 +229,7 @@ function TasksPage() {
   });
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const pendingTotal = visibleTasks.filter((t) => t.status === "pending").length;
   const completedTasks = useMemo(
     () =>
@@ -239,6 +248,7 @@ function TasksPage() {
         status: t.status === "pending" ? "completed" : "pending",
       }),
     onEdit: (t: Task) => setEditingId(t.id),
+    onOpen: (t: Task) => setDetailId(t.id),
     onDelete: (t: Task) => remove.mutate(t.id),
     onMove: (id: string, bucket: Bucket) => move.mutate({ id, bucket }),
     onSetDate: (id: string, date: string | null) => setDate.mutate({ id, date }),
@@ -254,6 +264,11 @@ function TasksPage() {
     projects,
     showProjectDot: activeProject === "all",
   };
+
+  const detailTask = useMemo(
+    () => (detailId ? tasks.find((t) => t.id === detailId) ?? null : null),
+    [detailId, tasks],
+  );
 
   return (
     <div className="space-y-10">
@@ -388,6 +403,28 @@ function TasksPage() {
           </div>
         </section>
       )}
+
+      <TaskDetailPanel
+        task={detailTask}
+        open={!!detailTask}
+        onOpenChange={(o) => !o && setDetailId(null)}
+        projectsById={projectsById}
+        projects={projects}
+        onToggle={(t) =>
+          toggle.mutate({ id: t.id, status: t.status === "pending" ? "completed" : "pending" })
+        }
+        onEdit={(t) => {
+          setDetailId(null);
+          setEditingId(t.id);
+        }}
+        onDelete={(t) => {
+          setDetailId(null);
+          remove.mutate(t.id);
+        }}
+        onMove={(id, bucket) => move.mutate({ id, bucket })}
+        onSetDate={(id, date) => setDate.mutate({ id, date })}
+        onSetProject={(id, projectId) => setProject.mutate({ id, projectId })}
+      />
     </div>
   );
 }
