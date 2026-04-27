@@ -1198,6 +1198,332 @@ function capitalize(s: string): string {
 }
 
 /* ============================================================
+ * Planning tab — Entradas, Saídas (fixas), Estimativa de variáveis
+ * Tudo aqui edita os valores planejados do mês.
+ * ============================================================ */
+
+function PlanningTab({
+  month,
+  categories,
+  plans,
+}: {
+  month: string;
+  categories: Category[];
+  plans: MonthlyPlan[];
+}) {
+  const incomeCats = categories.filter((c) => c.type === "income");
+  const fixedCats = categories.filter((c) => c.type === "expense" && !c.is_variable);
+  const variableCats = categories.filter((c) => c.type === "expense" && c.is_variable);
+
+  const totalIncome = sumPlanned(incomeCats, plans, month);
+  const totalFixed = sumPlanned(fixedCats, plans, month);
+  const totalVariable = sumPlanned(variableCats, plans, month);
+  const leftover = totalIncome - totalFixed - totalVariable;
+
+  return (
+    <div className="space-y-12">
+      {/* Resumo do plano — orienta a leitura sem competir com as edições */}
+      <section className="grid grid-cols-2 gap-x-2 gap-y-6 rounded-2xl border border-border bg-card p-6 md:grid-cols-4 md:gap-x-0 md:divide-x md:divide-border md:p-0">
+        <PlanSummaryItem label="Entradas" value={totalIncome} tone="income" className="md:px-6 md:py-6" />
+        <PlanSummaryItem label="Saídas fixas" value={totalFixed} tone="expense" prefix="−" className="md:px-6 md:py-6" />
+        <PlanSummaryItem label="Variáveis" value={totalVariable} tone="expense" prefix="−" className="md:px-6 md:py-6" />
+        <PlanSummaryItem
+          label="Sobra prevista"
+          value={leftover}
+          tone={leftover >= 0 ? "income" : "expense"}
+          className="md:px-6 md:py-6"
+        />
+      </section>
+
+      <PlanGroupSection
+        eyebrow="Planejamento"
+        title="Entradas"
+        description="Salário, freelas, recorrências. Defina o esperado para o mês."
+        emptyMessage="Nenhuma fonte de entrada cadastrada."
+        emptyHint="Adicione sua primeira fonte de receita."
+        month={month}
+        categories={incomeCats}
+        plans={plans}
+        type="income"
+      />
+
+      <PlanGroupSection
+        eyebrow="Planejamento"
+        title="Saídas fixas"
+        description="Aluguel, assinaturas, contas — gastos previsíveis todo mês."
+        emptyMessage="Nenhuma saída fixa cadastrada."
+        emptyHint="Adicione contas e assinaturas que se repetem."
+        month={month}
+        categories={fixedCats}
+        plans={plans}
+        type="expense"
+        is_variable={false}
+      />
+
+      <PlanGroupSection
+        eyebrow="Planejamento"
+        title="Estimativa de variáveis"
+        description="Mercado, transporte, lazer — categorias que oscilam dia a dia."
+        emptyMessage="Nenhuma categoria variável cadastrada."
+        emptyHint="Adicione áreas onde você quer um teto mensal."
+        month={month}
+        categories={variableCats}
+        plans={plans}
+        type="expense"
+        is_variable={true}
+      />
+    </div>
+  );
+}
+
+function sumPlanned(cats: Category[], plans: MonthlyPlan[], month: string): number {
+  let total = 0;
+  for (const c of cats) {
+    const p = plans.find((x) => x.category_id === c.id && x.month === month);
+    if (p) total += Number(p.planned_amount);
+  }
+  return total;
+}
+
+function PlanSummaryItem({
+  label,
+  value,
+  tone,
+  prefix,
+  className,
+}: {
+  label: string;
+  value: number;
+  tone?: "income" | "expense";
+  prefix?: string;
+  className?: string;
+}) {
+  const color =
+    tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : "text-foreground";
+  return (
+    <div className={cn("min-w-0", className)}>
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </p>
+      <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", color)}>
+        {prefix}
+        {formatCurrency(Math.abs(value))}
+      </p>
+    </div>
+  );
+}
+
+function PlanGroupSection({
+  eyebrow,
+  title,
+  description,
+  emptyMessage,
+  emptyHint,
+  month,
+  categories,
+  plans,
+  type,
+  is_variable,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  emptyMessage: string;
+  emptyHint: string;
+  month: string;
+  categories: Category[];
+  plans: MonthlyPlan[];
+  type: FinancialType;
+  is_variable?: boolean;
+}) {
+  const qc = useQueryClient();
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  const setPlan = useMutation({
+    mutationFn: upsertMonthlyPlan,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fin", "plans", month] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const addCat = useMutation({
+    mutationFn: createCategory,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["fin", "categories"] });
+      setNewName("");
+      setAdding(false);
+      toast.success("Categoria criada");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const removeCat = useMutation({
+    mutationFn: deleteCategory,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["fin", "categories"] });
+      qc.invalidateQueries({ queryKey: ["fin", "plans", month] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const total = sumPlanned(categories, plans, month);
+
+  function submitNew(e: React.FormEvent) {
+    e.preventDefault();
+    const name = newName.trim();
+    if (!name) return;
+    addCat.mutate({ name, type, is_variable: is_variable ?? true });
+  }
+
+  return (
+    <section className="space-y-4">
+      <SectionHeader
+        eyebrow={eyebrow}
+        title={title}
+        description={description}
+        action={
+          <div className="flex items-center gap-3">
+            {total > 0 && (
+              <span className="text-sm tabular-nums text-muted-foreground">
+                <span className="text-foreground">{formatCurrency(total)}</span> /mês
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAdding((v) => !v)}
+              className="h-8 rounded-full"
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              Adicionar
+            </Button>
+          </div>
+        }
+      />
+
+      {adding && (
+        <form
+          onSubmit={submitNew}
+          className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-card/40 px-3 py-2"
+        >
+          <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder={
+              type === "income"
+                ? "Ex.: Salário, Freelas…"
+                : is_variable
+                  ? "Ex.: Mercado, Transporte…"
+                  : "Ex.: Aluguel, Internet…"
+            }
+            className="h-8 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
+          />
+          <Button type="submit" size="sm" disabled={addCat.isPending}>
+            <Check className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setAdding(false);
+              setNewName("");
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </form>
+      )}
+
+      {categories.length === 0 ? (
+        <EmptyHint message={emptyMessage} hint={emptyHint} />
+      ) : (
+        <ul className="overflow-hidden rounded-2xl border border-border bg-card">
+          {categories.map((c, i) => {
+            const planned =
+              plans.find((p) => p.category_id === c.id && p.month === month)?.planned_amount ?? 0;
+            return (
+              <li
+                key={c.id}
+                className={cn(
+                  "group flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-secondary/30",
+                  i > 0 && "border-t border-border",
+                )}
+              >
+                <span className="min-w-0 flex-1 truncate text-sm">{c.name}</span>
+                <PlannedAmountInput
+                  value={Number(planned)}
+                  onSave={(v) =>
+                    setPlan.mutate({ category_id: c.id, month, planned_amount: v })
+                  }
+                />
+                <button
+                  onClick={() => {
+                    if (confirm(`Remover "${c.name}"?`)) removeCat.mutate(c.id);
+                  }}
+                  className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                  aria-label="Remover categoria"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function PlannedAmountInput({
+  value,
+  onSave,
+}: {
+  value: number;
+  onSave: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState(value > 0 ? String(value) : "");
+  // Manter sincronizado quando o valor externo muda (após mudar de mês/categoria)
+  const last = useRef(value);
+  if (last.current !== value) {
+    last.current = value;
+    setDraft(value > 0 ? String(value) : "");
+  }
+
+  function commit() {
+    const v = Number(draft.replace(",", "."));
+    if (!Number.isFinite(v) || v < 0) {
+      if (draft === "" && value > 0) {
+        onSave(0);
+      }
+      return;
+    }
+    if (Math.abs(v - value) > 0.005) onSave(v);
+  }
+
+  return (
+    <Input
+      type="number"
+      step="0.01"
+      min="0"
+      inputMode="decimal"
+      placeholder="0,00"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.currentTarget.blur();
+        }
+      }}
+      className="h-8 w-32 text-right text-sm tabular-nums"
+    />
+  );
+}
+
+/* ============================================================
  * Variables quick edit — modal compacto para definir tetos
  * ============================================================ */
 
