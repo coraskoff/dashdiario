@@ -24,6 +24,27 @@ export function dayAfterTomorrowIso(): string {
 }
 
 /**
+ * Return the ISO dates from (today + 3) up to and including the upcoming
+ * Sunday, in chronological order. Used for the "Resto da semana" strip below
+ * the 3-day kanban. Returns an empty array if today is already Friday onwards
+ * (i.e. nothing left between hoje+3 and domingo).
+ */
+export function restOfWeekIsos(): string[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dow = today.getDay(); // 0 = sunday … 6 = saturday
+  // Distance from today to the upcoming Sunday (0 if today is Sunday).
+  const daysUntilSunday = (7 - dow) % 7;
+  const out: string[] = [];
+  for (let offset = 3; offset <= daysUntilSunday; offset++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + offset);
+    out.push(toIsoDate(d));
+  }
+  return out;
+}
+
+/**
  * Classify a task by its due_date relative to today.
  * - today: due == today OR overdue
  * - tomorrow: due == tomorrow
