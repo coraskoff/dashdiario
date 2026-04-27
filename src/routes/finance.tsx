@@ -294,9 +294,9 @@ function MetricsBar({
   currentVariables: number;
   plannedDaily: number;
   currentDaily: number;
-  onAddIncome: () => void;
-  onAddExpense: () => void;
-  onAddVariable: () => void;
+  onAddIncome?: () => void;
+  onAddExpense?: () => void;
+  onAddVariable?: () => void;
 }) {
   return (
     <section className="grid grid-cols-2 gap-x-2 gap-y-6 rounded-2xl border border-border bg-card p-6 md:grid-cols-4 md:gap-x-0 md:divide-x md:divide-border md:p-0">
