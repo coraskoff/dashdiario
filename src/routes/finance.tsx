@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -48,6 +48,14 @@ import {
 } from "@/modules/finance/calculations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -82,6 +90,21 @@ export const Route = createFileRoute("/finance")({
 
 function FinancePage() {
   const [month, setMonth] = useState<string>(currentMonth());
+  const [tab, setTab] = useState<"overview" | "categories">("overview");
+  const [quickAdd, setQuickAdd] = useState<null | "income" | "expense">(null);
+  const [variablesOpen, setVariablesOpen] = useState(false);
+
+  const qcRoot = useQueryClient();
+
+  const createTx = useMutation({
+    mutationFn: createTransaction,
+    onSuccess: () => {
+      qcRoot.invalidateQueries({ queryKey: ["fin", "transactions"] });
+      setQuickAdd(null);
+      toast.success("Lançamento adicionado");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const cats = useQuery({ queryKey: ["fin", "categories"], queryFn: fetchCategories });
   const tx = useQuery({ queryKey: ["fin", "transactions"], queryFn: fetchTransactions });
@@ -120,6 +143,20 @@ function FinancePage() {
 
   const loading = cats.isLoading || plans.isLoading || daily.isLoading || tx.isLoading;
 
+  // Swipe entre abas no mobile
+  const touchStartX = useRef<number | null>(null);
+  function onTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0].clientX;
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current == null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(dx) < 60) return;
+    if (dx < 0 && tab === "overview") setTab("categories");
+    if (dx > 0 && tab === "categories") setTab("overview");
+  }
+
   return (
     <div className="space-y-12 pb-16">
       {/* ---------- Header ---------- */}
@@ -140,39 +177,97 @@ function FinancePage() {
           <Pulse />
         </div>
       ) : (
-        <>
-          {/* ---------- Headline metrics ---------- */}
-          <MetricsBar
-            income={summary.income}
-            expenseTotal={summary.expenseTotal}
-            plannedVariables={summary.planned}
-            currentVariables={summary.projected}
-            plannedDaily={summary.plannedDailyTotal}
-            currentDaily={summary.currentDailyTotal}
-          />
+        <Tabs value={tab} onValueChange={(v) => setTab(v as "overview" | "categories")}>
+          <TabsList className="h-10 w-full justify-start gap-1 rounded-full bg-secondary/60 p-1 md:w-auto">
+            <TabsTrigger value="overview" className="flex-1 rounded-full px-4 md:flex-none">
+              Visão geral
+            </TabsTrigger>
+            <TabsTrigger value="categories" className="flex-1 rounded-full px-4 md:flex-none">
+              Por categoria
+            </TabsTrigger>
+          </TabsList>
 
-          {/* ---------- Plan vs Real per category ---------- */}
-          <PlanSection
-            month={month}
-            categories={expenseCategories}
-            breakdowns={breakdowns}
-            allCategories={categories}
-          />
+          <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+            <TabsContent value="overview" className="mt-8 space-y-12">
+              <MetricsBar
+                income={summary.income}
+                expenseTotal={summary.expenseTotal}
+                plannedVariables={summary.planned}
+                currentVariables={summary.projected}
+                plannedDaily={summary.plannedDailyTotal}
+                currentDaily={summary.currentDailyTotal}
+                onAddIncome={() => setQuickAdd("income")}
+                onAddExpense={() => setQuickAdd("expense")}
+                onAddVariable={() => setVariablesOpen(true)}
+              />
 
-          {/* ---------- Quick daily entry ---------- */}
-          <DailyEntrySection
-            month={month}
-            categories={expenseCategories}
-            expenses={monthExpenses}
-          />
+              <DailyEntrySection
+                month={month}
+                categories={expenseCategories}
+                expenses={monthExpenses}
+              />
 
-          {/* ---------- Income / one-off ---------- */}
-          <TransactionsSection
-            month={month}
-            categories={categories}
-            transactions={monthTransactions}
-          />
-        </>
+              <TransactionsSection
+                month={month}
+                categories={categories}
+                transactions={monthTransactions}
+              />
+            </TabsContent>
+
+            <TabsContent value="categories" className="mt-8">
+              <PlanSection
+                month={month}
+                categories={expenseCategories}
+                breakdowns={breakdowns}
+                allCategories={categories}
+              />
+            </TabsContent>
+          </div>
+
+          {/* Quick add modals via "+" nas métricas */}
+          <Dialog open={quickAdd !== null} onOpenChange={(o) => !o && setQuickAdd(null)}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>
+                  {quickAdd === "income" ? "Nova entrada" : "Nova saída"}
+                </DialogTitle>
+                <DialogDescription>
+                  {quickAdd === "income"
+                    ? "Salário, freela, reembolso — o que entrou."
+                    : "Despesa pontual fora do plano mensal."}
+                </DialogDescription>
+              </DialogHeader>
+              {quickAdd && (
+                <QuickTransactionForm
+                  month={month}
+                  categories={categories}
+                  initialType={quickAdd}
+                  onSubmit={(input) => createTx.mutate(input)}
+                  onCancel={() => setQuickAdd(null)}
+                  pending={createTx.isPending}
+                  hideTypeToggle
+                />
+              )}
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={variablesOpen} onOpenChange={setVariablesOpen}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Definir teto de variáveis</DialogTitle>
+                <DialogDescription>
+                  Ajuste rápido por categoria. Mais detalhes na aba Por categoria.
+                </DialogDescription>
+              </DialogHeader>
+              <VariablesQuickEdit
+                month={month}
+                categories={expenseCategories}
+                breakdowns={breakdowns}
+                onClose={() => setVariablesOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
+        </Tabs>
       )}
     </div>
   );
@@ -236,6 +331,9 @@ function MetricsBar({
   currentVariables,
   plannedDaily,
   currentDaily,
+  onAddIncome,
+  onAddExpense,
+  onAddVariable,
 }: {
   income: number;
   expenseTotal: number;
@@ -243,15 +341,25 @@ function MetricsBar({
   currentVariables: number;
   plannedDaily: number;
   currentDaily: number;
+  onAddIncome: () => void;
+  onAddExpense: () => void;
+  onAddVariable: () => void;
 }) {
   return (
     <section className="grid grid-cols-2 gap-x-2 gap-y-6 rounded-2xl border border-border bg-card p-6 md:grid-cols-4 md:gap-x-0 md:divide-x md:divide-border md:p-0">
-      <Metric label="Entradas" value={income} tone="income" className="md:px-6 md:py-6" />
+      <Metric
+        label="Entradas"
+        value={income}
+        tone="income"
+        onAdd={onAddIncome}
+        className="md:px-6 md:py-6"
+      />
       <Metric
         label="Saídas"
         value={expenseTotal}
         tone="expense"
         prefix="−"
+        onAdd={onAddExpense}
         className="md:px-6 md:py-6"
       />
       <PairedMetric
@@ -259,6 +367,7 @@ function MetricsBar({
         previa={plannedVariables}
         atual={currentVariables}
         invert
+        onAdd={onAddVariable}
         className="md:px-6 md:py-6"
       />
       <PairedMetric
@@ -276,21 +385,26 @@ function Metric({
   value,
   tone,
   prefix,
+  onAdd,
   className,
 }: {
   label: string;
   value: number;
   tone?: "income" | "expense";
   prefix?: string;
+  onAdd?: () => void;
   className?: string;
 }) {
   const color =
     tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : "text-foreground";
   return (
     <div className={cn("min-w-0", className)}>
-      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          {label}
+        </p>
+        {onAdd && <AddButton onClick={onAdd} label={`Adicionar ${label.toLowerCase()}`} />}
+      </div>
       <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", color)}>
         {prefix}
         {formatCurrency(value)}
@@ -312,6 +426,7 @@ function PairedMetric({
   previa,
   atual,
   invert,
+  onAdd,
   className,
 }: {
   label: string;
@@ -319,6 +434,7 @@ function PairedMetric({
   atual: number;
   /** present for API symmetry; both metrics treat atual<prévia as positive */
   invert?: boolean;
+  onAdd?: () => void;
   className?: string;
 }) {
   void invert;
@@ -335,9 +451,12 @@ function PairedMetric({
         : "text-foreground";
   return (
     <div className={cn("min-w-0", className)}>
-      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          {label}
+        </p>
+        {onAdd && <AddButton onClick={onAdd} label={`Definir ${label.toLowerCase()}`} />}
+      </div>
       <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", color)}>
         {formatCurrency(atual)}
       </p>
@@ -356,6 +475,19 @@ function PairedMetric({
         )}
       </p>
     </div>
+  );
+}
+
+function AddButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-foreground hover:bg-secondary hover:text-foreground"
+    >
+      <Plus className="h-3 w-3" />
+    </button>
   );
 }
 
@@ -859,6 +991,8 @@ function QuickTransactionForm({
   onSubmit,
   onCancel,
   pending,
+  initialType,
+  hideTypeToggle,
 }: {
   month: string;
   categories: Category[];
@@ -871,8 +1005,10 @@ function QuickTransactionForm({
   }) => void;
   onCancel: () => void;
   pending: boolean;
+  initialType?: FinancialType;
+  hideTypeToggle?: boolean;
 }) {
-  const [type, setType] = useState<FinancialType>("income");
+  const [type, setType] = useState<FinancialType>(initialType ?? "income");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const today = todayIso();
@@ -903,6 +1039,7 @@ function QuickTransactionForm({
       className="space-y-3 rounded-2xl border border-border bg-card p-4"
     >
       <div className="flex flex-wrap items-center gap-2">
+        {!hideTypeToggle && (
         <div className="inline-flex rounded-full border border-border bg-secondary/40 p-0.5 text-xs">
           {(["income", "expense"] as const).map((t) => (
             <button
@@ -925,6 +1062,7 @@ function QuickTransactionForm({
             </button>
           ))}
         </div>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
             Cancelar
@@ -1103,4 +1241,105 @@ function EmptyHint({ message, hint }: { message: string; hint?: string }) {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/* ============================================================
+ * Variables quick edit — modal compacto para definir tetos
+ * ============================================================ */
+
+function VariablesQuickEdit({
+  month,
+  categories,
+  breakdowns,
+  onClose,
+}: {
+  month: string;
+  categories: Category[];
+  breakdowns: CategoryBreakdown[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const setPlan = useMutation({
+    mutationFn: upsertMonthlyPlan,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fin", "plans", month] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      categories.map((c) => {
+        const planned = breakdowns.find((b) => b.category_id === c.id)?.planned ?? 0;
+        return [c.id, planned > 0 ? String(planned) : ""];
+      }),
+    ),
+  );
+
+  if (categories.length === 0) {
+    return (
+      <div className="py-4">
+        <EmptyHint
+          message="Nenhuma categoria de despesa ainda."
+          hint="Crie uma na aba Por categoria."
+        />
+      </div>
+    );
+  }
+
+  async function saveAll() {
+    const tasks: Promise<unknown>[] = [];
+    for (const c of categories) {
+      const raw = drafts[c.id] ?? "";
+      const v = Number(raw.replace(",", "."));
+      const planned = breakdowns.find((b) => b.category_id === c.id)?.planned ?? 0;
+      const next = Number.isFinite(v) && v >= 0 ? v : 0;
+      if (Math.abs(next - planned) > 0.005) {
+        tasks.push(
+          setPlan.mutateAsync({ category_id: c.id, month, planned_amount: next }),
+        );
+      }
+    }
+    if (tasks.length === 0) {
+      onClose();
+      return;
+    }
+    try {
+      await Promise.all(tasks);
+      toast.success("Tetos atualizados");
+      onClose();
+    } catch {
+      // erros já tratados
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <ul className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+        {categories.map((c) => (
+          <li key={c.id} className="flex items-center gap-3">
+            <span className="min-w-0 flex-1 truncate text-sm">{c.name}</span>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              placeholder="0,00"
+              value={drafts[c.id] ?? ""}
+              onChange={(e) =>
+                setDrafts((d) => ({ ...d, [c.id]: e.target.value }))
+              }
+              className="h-9 w-32 text-right tabular-nums"
+            />
+          </li>
+        ))}
+      </ul>
+      <div className="flex justify-end gap-2 border-t pt-3">
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button size="sm" onClick={saveAll} disabled={setPlan.isPending}>
+          Salvar
+        </Button>
+      </div>
+    </div>
+  );
 }
