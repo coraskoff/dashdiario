@@ -112,12 +112,11 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-          <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
+          <Link to="/tasks" className="flex items-center gap-2 font-semibold tracking-tight">
             <span className="inline-block h-2 w-2 rounded-full bg-foreground" />
-            Foco
+            Dash
           </Link>
           <nav className="flex items-center gap-1 text-sm">
-            <NavLink to="/">Visão geral</NavLink>
             <NavLink to="/tasks">Tarefas</NavLink>
             <NavLink to="/finance">Finanças</NavLink>
           </nav>
