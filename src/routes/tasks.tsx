@@ -298,7 +298,7 @@ function TasksPage() {
         onAdd={(title) =>
           create.mutate(
             { title, due_date: null, project_id: newTaskProjectId },
-            { onSuccess: () => toast.success("Adicionada à Semana") },
+            { onSuccess: () => toast.success("Guardada sem data") },
           )
         }
         loading={isLoading}
@@ -439,9 +439,9 @@ function WeekStrip({
     >
       <div className="flex items-baseline justify-between gap-4 pb-4">
         <div className="flex items-baseline gap-3">
-          <h2 className="text-base font-semibold">Semana</h2>
+          <h2 className="text-base font-semibold">Sem data</h2>
           <span className="text-xs text-muted-foreground">
-            ideias e metas sem dia definido
+            o que quero fazer, mas ainda sem dia
           </span>
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">
@@ -449,14 +449,14 @@ function WeekStrip({
         </span>
       </div>
 
-      <QuickAdd placeholder="Algo para esta semana…" onAdd={onAdd} />
+      <QuickAdd placeholder="Anotar uma ideia, meta ou recado…" onAdd={onAdd} />
 
       {/* Horizontal flowing chips — pending only; completed live in the archive sheet */}
       <div className="mt-4 flex flex-wrap gap-2">
         {loading && <Pulse size={10} className="ml-1" />}
         {!loading && tasks.filter((t) => t.status === "pending").length === 0 && (
           <span className="text-sm text-muted-foreground">
-            Use este espaço para o que quer fazer “em algum momento”.
+            Tudo já tem dia. Use aqui para guardar o que vem sem hora.
           </span>
         )}
         {tasks
@@ -935,7 +935,7 @@ function TaskActionsMenu({
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuItem onSelect={() => onMove(task.id, "week")}>
-                Semana
+                Sem data
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onMove(task.id, "today")}>
                 Hoje
