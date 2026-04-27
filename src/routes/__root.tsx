@@ -112,12 +112,11 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-          <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
+          <Link to="/tasks" className="flex items-center gap-2 font-semibold tracking-tight">
             <span className="inline-block h-2 w-2 rounded-full bg-foreground" />
-            Foco
+            Dash
           </Link>
           <nav className="flex items-center gap-1 text-sm">
-            <NavLink to="/">Visão geral</NavLink>
             <NavLink to="/tasks">Tarefas</NavLink>
             <NavLink to="/finance">Finanças</NavLink>
           </nav>
@@ -132,7 +131,6 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
   return (
     <Link
       to={to}
-      activeOptions={{ exact: to === "/" }}
       className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground data-[status=active]:text-foreground data-[status=active]:bg-secondary"
     >
       {children}
