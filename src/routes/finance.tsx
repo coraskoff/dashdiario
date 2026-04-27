@@ -90,21 +90,8 @@ export const Route = createFileRoute("/finance")({
 
 function FinancePage() {
   const [month, setMonth] = useState<string>(currentMonth());
-  const [tab, setTab] = useState<"overview" | "categories">("overview");
-  const [quickAdd, setQuickAdd] = useState<null | "income" | "expense">(null);
-  const [variablesOpen, setVariablesOpen] = useState(false);
-
-  const qcRoot = useQueryClient();
-
-  const createTx = useMutation({
-    mutationFn: createTransaction,
-    onSuccess: () => {
-      qcRoot.invalidateQueries({ queryKey: ["fin", "transactions"] });
-      setQuickAdd(null);
-      toast.success("Lançamento adicionado");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  type FinTab = "overview" | "categories" | "planning";
+  const [tab, setTab] = useState<FinTab>("overview");
 
   const cats = useQuery({ queryKey: ["fin", "categories"], queryFn: fetchCategories });
   const tx = useQuery({ queryKey: ["fin", "transactions"], queryFn: fetchTransactions });
@@ -148,13 +135,15 @@ function FinancePage() {
   function onTouchStart(e: React.TouchEvent) {
     touchStartX.current = e.touches[0].clientX;
   }
+  const order: FinTab[] = ["overview", "categories", "planning"];
   function onTouchEnd(e: React.TouchEvent) {
     if (touchStartX.current == null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     touchStartX.current = null;
     if (Math.abs(dx) < 60) return;
-    if (dx < 0 && tab === "overview") setTab("categories");
-    if (dx > 0 && tab === "categories") setTab("overview");
+    const idx = order.indexOf(tab);
+    if (dx < 0 && idx < order.length - 1) setTab(order[idx + 1]);
+    if (dx > 0 && idx > 0) setTab(order[idx - 1]);
   }
 
   return (
@@ -177,13 +166,16 @@ function FinancePage() {
           <Pulse />
         </div>
       ) : (
-        <Tabs value={tab} onValueChange={(v) => setTab(v as "overview" | "categories")}>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as FinTab)}>
           <TabsList className="h-10 w-full justify-start gap-1 rounded-full bg-secondary/60 p-1 md:w-auto">
             <TabsTrigger value="overview" className="flex-1 rounded-full px-4 md:flex-none">
               Visão geral
             </TabsTrigger>
             <TabsTrigger value="categories" className="flex-1 rounded-full px-4 md:flex-none">
               Por categoria
+            </TabsTrigger>
+            <TabsTrigger value="planning" className="flex-1 rounded-full px-4 md:flex-none">
+              Planejamento
             </TabsTrigger>
           </TabsList>
 
@@ -196,9 +188,6 @@ function FinancePage() {
                 currentVariables={summary.projected}
                 plannedDaily={summary.plannedDailyTotal}
                 currentDaily={summary.currentDailyTotal}
-                onAddIncome={() => setQuickAdd("income")}
-                onAddExpense={() => setQuickAdd("expense")}
-                onAddVariable={() => setVariablesOpen(true)}
               />
 
               <DailyEntrySection
@@ -222,51 +211,15 @@ function FinancePage() {
                 allCategories={categories}
               />
             </TabsContent>
-          </div>
 
-          {/* Quick add modals via "+" nas métricas */}
-          <Dialog open={quickAdd !== null} onOpenChange={(o) => !o && setQuickAdd(null)}>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>
-                  {quickAdd === "income" ? "Nova entrada" : "Nova saída"}
-                </DialogTitle>
-                <DialogDescription>
-                  {quickAdd === "income"
-                    ? "Salário, freela, reembolso — o que entrou."
-                    : "Despesa pontual fora do plano mensal."}
-                </DialogDescription>
-              </DialogHeader>
-              {quickAdd && (
-                <QuickTransactionForm
-                  month={month}
-                  categories={categories}
-                  initialType={quickAdd}
-                  onSubmit={(input) => createTx.mutate(input)}
-                  onCancel={() => setQuickAdd(null)}
-                  pending={createTx.isPending}
-                  hideTypeToggle
-                />
-              )}
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={variablesOpen} onOpenChange={setVariablesOpen}>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Definir teto de variáveis</DialogTitle>
-                <DialogDescription>
-                  Ajuste rápido por categoria. Mais detalhes na aba Por categoria.
-                </DialogDescription>
-              </DialogHeader>
-              <VariablesQuickEdit
+            <TabsContent value="planning" className="mt-8">
+              <PlanningTab
                 month={month}
-                categories={expenseCategories}
-                breakdowns={breakdowns}
-                onClose={() => setVariablesOpen(false)}
+                categories={categories}
+                plans={monthPlans}
               />
-            </DialogContent>
-          </Dialog>
+            </TabsContent>
+          </div>
         </Tabs>
       )}
     </div>
