@@ -935,7 +935,7 @@ function TaskActionsMenu({
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuItem onSelect={() => onMove(task.id, "week")}>
-                Semana
+                Sem data
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onMove(task.id, "today")}>
                 Hoje
