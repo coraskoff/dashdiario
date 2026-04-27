@@ -202,6 +202,15 @@ function TasksPage() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const pendingTotal = visibleTasks.filter((t) => t.status === "pending").length;
+  const completedTasks = useMemo(
+    () =>
+      visibleTasks
+        .filter((t) => t.status === "completed")
+        .sort((a, b) =>
+          (b.completed_at ?? b.updated_at).localeCompare(a.completed_at ?? a.updated_at),
+        ),
+    [visibleTasks],
+  );
 
   const columnHandlers = {
     onToggle: (t: Task) =>
@@ -238,9 +247,18 @@ function TasksPage() {
             Sua semana.
           </h1>
         </div>
-        <div className="hidden text-right text-sm text-muted-foreground md:block">
-          <span className="tabular-nums text-foreground">{pendingTotal}</span>{" "}
-          {pendingTotal === 1 ? "tarefa pendente" : "tarefas pendentes"}
+        <div className="flex items-center gap-4">
+          <div className="hidden text-right text-sm text-muted-foreground md:block">
+            <span className="tabular-nums text-foreground">{pendingTotal}</span>{" "}
+            {pendingTotal === 1 ? "tarefa pendente" : "tarefas pendentes"}
+          </div>
+          <CompletedSheet
+            tasks={completedTasks}
+            projectsById={projectsById}
+            showProjectDot={activeProject === "all"}
+            onReopen={(t) => toggle.mutate({ id: t.id, status: "pending" })}
+            onDelete={(t) => remove.mutate(t.id)}
+          />
         </div>
       </header>
 
