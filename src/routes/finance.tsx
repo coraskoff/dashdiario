@@ -331,6 +331,9 @@ function MetricsBar({
   currentVariables,
   plannedDaily,
   currentDaily,
+  onAddIncome,
+  onAddExpense,
+  onAddVariable,
 }: {
   income: number;
   expenseTotal: number;
@@ -338,15 +341,25 @@ function MetricsBar({
   currentVariables: number;
   plannedDaily: number;
   currentDaily: number;
+  onAddIncome: () => void;
+  onAddExpense: () => void;
+  onAddVariable: () => void;
 }) {
   return (
     <section className="grid grid-cols-2 gap-x-2 gap-y-6 rounded-2xl border border-border bg-card p-6 md:grid-cols-4 md:gap-x-0 md:divide-x md:divide-border md:p-0">
-      <Metric label="Entradas" value={income} tone="income" className="md:px-6 md:py-6" />
+      <Metric
+        label="Entradas"
+        value={income}
+        tone="income"
+        onAdd={onAddIncome}
+        className="md:px-6 md:py-6"
+      />
       <Metric
         label="Saídas"
         value={expenseTotal}
         tone="expense"
         prefix="−"
+        onAdd={onAddExpense}
         className="md:px-6 md:py-6"
       />
       <PairedMetric
@@ -354,6 +367,7 @@ function MetricsBar({
         previa={plannedVariables}
         atual={currentVariables}
         invert
+        onAdd={onAddVariable}
         className="md:px-6 md:py-6"
       />
       <PairedMetric
@@ -371,21 +385,26 @@ function Metric({
   value,
   tone,
   prefix,
+  onAdd,
   className,
 }: {
   label: string;
   value: number;
   tone?: "income" | "expense";
   prefix?: string;
+  onAdd?: () => void;
   className?: string;
 }) {
   const color =
     tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : "text-foreground";
   return (
     <div className={cn("min-w-0", className)}>
-      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          {label}
+        </p>
+        {onAdd && <AddButton onClick={onAdd} label={`Adicionar ${label.toLowerCase()}`} />}
+      </div>
       <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", color)}>
         {prefix}
         {formatCurrency(value)}
@@ -407,6 +426,7 @@ function PairedMetric({
   previa,
   atual,
   invert,
+  onAdd,
   className,
 }: {
   label: string;
@@ -414,6 +434,7 @@ function PairedMetric({
   atual: number;
   /** present for API symmetry; both metrics treat atual<prévia as positive */
   invert?: boolean;
+  onAdd?: () => void;
   className?: string;
 }) {
   void invert;
@@ -430,9 +451,12 @@ function PairedMetric({
         : "text-foreground";
   return (
     <div className={cn("min-w-0", className)}>
-      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          {label}
+        </p>
+        {onAdd && <AddButton onClick={onAdd} label={`Definir ${label.toLowerCase()}`} />}
+      </div>
       <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", color)}>
         {formatCurrency(atual)}
       </p>
@@ -451,6 +475,19 @@ function PairedMetric({
         )}
       </p>
     </div>
+  );
+}
+
+function AddButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-foreground hover:bg-secondary hover:text-foreground"
+    >
+      <Plus className="h-3 w-3" />
+    </button>
   );
 }
 
