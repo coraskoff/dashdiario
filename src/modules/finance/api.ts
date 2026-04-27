@@ -109,7 +109,7 @@ export async function updateCategory(
   id: string,
   patch: { name?: string; is_variable?: boolean },
 ): Promise<Category> {
-  const update: Record<string, unknown> = {};
+  const update: { name?: string; is_variable?: boolean } = {};
   if (patch.name !== undefined) {
     const name = patch.name.trim();
     if (!name) throw new Error("Nome inválido.");
