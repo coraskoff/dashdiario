@@ -4,6 +4,8 @@ export interface Category {
   id: string;
   name: string;
   type: FinancialType;
+  /** Para despesas: true = variável (dia-a-dia), false = fixa (recorrente). Ignorado para receitas. */
+  is_variable: boolean;
 }
 
 export interface Transaction {
