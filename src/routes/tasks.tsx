@@ -706,26 +706,23 @@ function TaskRow({
   task,
   accent,
   onToggle,
+  onOpen,
   projectsById,
   showProjectDot,
   ...handlers
 }: ColumnHandlers & { task: Task; accent?: boolean }) {
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
-  const [expanded, setExpanded] = useState(false);
   return (
     <li
           draggable
           onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
           onClick={(e) => {
-            // Don't toggle when clicking interactive children
             const target = e.target as HTMLElement;
             if (target.closest("button, a, [role='menuitem']")) return;
-            setExpanded((v) => !v);
+            onOpen(task);
           }}
-          className={`group relative flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60 ${
-            expanded ? "bg-secondary/40" : ""
-          }`}
+          className="group relative flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60"
         >
       <button
         onClick={() => onToggle(task)}
@@ -760,35 +757,10 @@ function TaskRow({
             {task.title}
           </p>
         </div>
-        {task.description && !done && !expanded && (
+        {task.description && !done && (
           <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
             {task.description}
           </p>
-        )}
-        {expanded && (
-          <div className="mt-2 space-y-2">
-            {task.description ? (
-              <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-                {task.description}
-              </p>
-            ) : (
-              <p className="text-xs italic text-muted-foreground/60">Sem descrição.</p>
-            )}
-            <div className="flex items-center gap-2 pt-1">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 text-xs"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlers.onEdit(task);
-                }}
-              >
-                <Pencil className="mr-1 h-3 w-3" />
-                Editar
-              </Button>
-            </div>
-          </div>
         )}
       </div>
       <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100">
@@ -796,6 +768,7 @@ function TaskRow({
           task={task}
           projectsById={projectsById}
           {...handlers}
+          onOpen={onOpen}
           onToggle={onToggle}
           showProjectDot={showProjectDot}
         />
