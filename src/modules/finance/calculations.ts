@@ -93,6 +93,10 @@ export interface CategoryBreakdown {
   plannedDaily: number;
   /** realized daily average over elapsed days in the period. */
   realizedDaily: number;
+  /** dynamic remaining daily average — redistributes leftover budget across remaining days. */
+  currentDaily: number;
+  /** hybrid effective spend up to (but not including) referenceDate: real where recorded, planned daily otherwise. */
+  hybridSpentBeforeToday: number;
   /** projected total: realized so far + plannedDaily * remaining days. */
   projected: number;
 }
@@ -144,6 +148,10 @@ export function buildCategoryBreakdowns(
   else if (refMonth > month) elapsedDays = totalDays;
   else elapsedDays = Math.min(totalDays, Number(referenceDate.slice(8, 10)));
   const remainingDays = Math.max(0, totalDays - elapsedDays);
+  // Days remaining INCLUDING today (today's budget is still re-allocatable).
+  const remainingIncludingToday = refMonth === month ? remainingDays + 1 : remainingDays;
+  // Days strictly before today.
+  const daysBeforeToday = Math.max(0, elapsedDays - (refMonth === month ? 1 : 0));
 
   return categoryIds.map((category_id) => {
     const plan = plans.find((p) => p.category_id === category_id && p.month === month);
@@ -151,13 +159,46 @@ export function buildCategoryBreakdowns(
     const plannedDaily = planned / totalDays;
     const realized = sumRealized(expenses, category_id, month);
     const realizedDaily = elapsedDays > 0 ? realized / elapsedDays : 0;
-    const projected = realized + plannedDaily * remainingDays;
+
+    // Hybrid: for each day strictly before today, use real value if recorded, else plannedDaily.
+    let hybridSpentBeforeToday = 0;
+    if (refMonth === month) {
+      const refDay = Number(referenceDate.slice(8, 10));
+      const [y, m] = month.split("-");
+      for (let d = 1; d < refDay; d++) {
+        const iso = `${y}-${m}-${String(d).padStart(2, "0")}`;
+        const real = expenses.find((e) => e.date === iso && e.category_id === category_id);
+        hybridSpentBeforeToday += real ? Number(real.amount) : plannedDaily;
+      }
+    } else if (refMonth > month) {
+      hybridSpentBeforeToday = realized; // closed month
+    }
+
+    let currentDaily: number;
+    if (refMonth < month) {
+      currentDaily = plannedDaily;
+    } else if (refMonth > month || remainingIncludingToday === 0) {
+      currentDaily = 0;
+    } else {
+      currentDaily = Math.max(0, (planned - hybridSpentBeforeToday) / remainingIncludingToday);
+    }
+
+    // Projected total (= "Variáveis atual"): hybrid spend so far + currentDaily across remaining days inc. today.
+    const projected =
+      refMonth < month
+        ? planned
+        : refMonth > month
+          ? realized
+          : hybridSpentBeforeToday + currentDaily * remainingIncludingToday;
+
     return {
       category_id,
       planned,
       realized,
       plannedDaily,
       realizedDaily,
+      currentDaily,
+      hybridSpentBeforeToday,
       projected,
     };
   });
@@ -170,6 +211,12 @@ export interface MonthSummary {
   planned: number;
   realized: number;
   projected: number;
+  /** Sum of plannedDaily across all categories. */
+  plannedDailyTotal: number;
+  /** Sum of currentDaily across all categories — the dynamic redistributed daily budget. */
+  currentDailyTotal: number;
+  /** Total expense outflow: variable realized + one-off expense transactions. */
+  expenseTotal: number;
 }
 
 /** Consolidated month summary using transactions + plans + daily expenses. */
@@ -188,5 +235,18 @@ export function buildMonthSummary(
   const planned = breakdowns.reduce((a, b) => a + b.planned, 0);
   const realized = breakdowns.reduce((a, b) => a + b.realized, 0);
   const projected = breakdowns.reduce((a, b) => a + b.projected, 0);
-  return { income, expense, balance: income - expense, planned, realized, projected };
+  const plannedDailyTotal = breakdowns.reduce((a, b) => a + b.plannedDaily, 0);
+  const currentDailyTotal = breakdowns.reduce((a, b) => a + b.currentDaily, 0);
+  const expenseTotal = realized + expense;
+  return {
+    income,
+    expense,
+    balance: income - expense,
+    planned,
+    realized,
+    projected,
+    plannedDailyTotal,
+    currentDailyTotal,
+    expenseTotal,
+  };
 }
