@@ -368,10 +368,10 @@ function TasksPage() {
             <div className="h-px flex-1 bg-border/70" />
           </div>
           <div
-            className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:snap-none md:overflow-visible md:px-0 md:pb-0"
+            className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:snap-none md:overflow-visible md:px-0 md:pb-0"
             style={{
+              ["--rest-cols" as string]: restIsos.length,
               gridTemplateColumns: `repeat(${restIsos.length}, minmax(0, 1fr))`,
-              display: "grid",
             }}
           >
             {restIsos.map((iso) => (
@@ -379,7 +379,7 @@ function TasksPage() {
                 key={iso}
                 iso={iso}
                 tasks={tasksByDate[iso] ?? []}
-                onAdd={(title) =>
+                onAdd={(title: string) =>
                   create.mutate({ title, due_date: iso, project_id: newTaskProjectId })
                 }
                 {...columnHandlers}
