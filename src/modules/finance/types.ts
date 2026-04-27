@@ -24,3 +24,31 @@ export interface TransactionInput {
   occurred_at: string;
   description?: string | null;
 }
+
+/** Planejamento mensal de uma categoria de despesa. */
+export interface MonthlyPlan {
+  id: string;
+  category_id: string;
+  month: string; // YYYY-MM
+  planned_amount: number;
+}
+
+export interface MonthlyPlanInput {
+  category_id: string;
+  month: string;
+  planned_amount: number;
+}
+
+/** Registro real de gasto por categoria em um dia específico. */
+export interface DailyExpense {
+  id: string;
+  category_id: string;
+  date: string; // YYYY-MM-DD
+  amount: number;
+}
+
+export interface DailyExpenseInput {
+  category_id: string;
+  date: string;
+  amount: number;
+}
