@@ -298,7 +298,7 @@ function TasksPage() {
         onAdd={(title) =>
           create.mutate(
             { title, due_date: null, project_id: newTaskProjectId },
-            { onSuccess: () => toast.success("Adicionada à Semana") },
+            { onSuccess: () => toast.success("Guardada sem data") },
           )
         }
         loading={isLoading}
