@@ -434,6 +434,7 @@ function TasksPage() {
 interface ColumnHandlers {
   onToggle: (t: Task) => void;
   onEdit: (t: Task) => void;
+  onOpen: (t: Task) => void;
   onDelete: (t: Task) => void;
   onMove: (id: string, bucket: Bucket) => void;
   onSetDate: (id: string, date: string | null) => void;
