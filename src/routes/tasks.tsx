@@ -510,6 +510,7 @@ function WeekStrip({
 function WeekChip({
   task,
   onToggle,
+  onOpen,
   projectsById,
   showProjectDot,
   ...handlers
@@ -520,7 +521,12 @@ function WeekChip({
     <div
           draggable
           onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
-          className={`group flex max-w-full items-center gap-2 rounded-full border border-border bg-card pl-1 pr-1 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
+          onClick={(e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest("button, a, [role='menuitem']")) return;
+            onOpen(task);
+          }}
+          className={`group flex max-w-full cursor-pointer items-center gap-2 rounded-full border border-border bg-card pl-1 pr-1 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
             done ? "opacity-50" : ""
           }`}
         >
@@ -548,6 +554,7 @@ function WeekChip({
             task={task}
             projectsById={projectsById}
             {...handlers}
+            onOpen={onOpen}
             onToggle={onToggle}
             showProjectDot={showProjectDot}
           />
