@@ -1,1617 +1,653 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ArrowLeft, ArrowRight, Pencil, Trash2, X } from "lucide-react";
+
 import {
-  ArrowLeft,
-  ArrowRight,
-  ArrowDownRight,
-  ArrowUpRight,
-  Check,
-  ChevronDown,
-  Plus,
-  Trash2,
-  X,
-} from "lucide-react";
-import {
-  createCategory,
-  createTransaction,
-  deleteCategory,
-  deleteDailyExpense,
-  deleteMonthlyPlan,
-  deleteTransaction,
-  fetchCategories,
-  fetchDailyExpenses,
-  fetchMonthlyPlans,
-  fetchTransactions,
-  upsertDailyExpense,
-  upsertMonthlyPlan,
+  deleteDay,
+  fetchAllDays,
+  fetchAllMonths,
+  upsertDay,
+  upsertMonth,
 } from "@/modules/finance/api";
-import type {
-  Category,
-  DailyExpense,
-  FinancialType,
-  MonthlyPlan,
-  Transaction,
-} from "@/modules/finance/types";
+import type { FinanceDay, FinanceMonth } from "@/modules/finance/types";
 import {
-  buildCategoryBreakdowns,
-  buildMonthSummary,
+  buildDayRows,
+  buildYearProjection,
   currentMonth,
   formatCurrency,
-  formatDate,
-  formatMonth,
-  monthOf,
+  formatCurrencyCompact,
+  formatMonthLabel,
   shiftMonth,
+  suggestedDaily,
+  summarizeMonth,
   todayIso,
-  type CategoryBreakdown,
+  type DayRow,
 } from "@/modules/finance/calculations";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
-import { Pulse } from "@/components/Pulse";
 
 export const Route = createFileRoute("/finance")({
-  head: () => ({
-    meta: [
-      { title: "Finanças — Dash" },
-      {
-        name: "description",
-        content: "Planeje gastos mensais e acompanhe a execução real.",
-      },
-    ],
-  }),
   component: FinancePage,
 });
 
-/* ============================================================
- * Page
- * ============================================================ */
+/* ---------- helpers ---------- */
+function parseAmount(input: string): number {
+  if (!input) return 0;
+  const normalized = input.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : 0;
+}
 
+function formatInput(value: number): string {
+  if (!value) return "";
+  return value.toFixed(2).replace(".", ",");
+}
+
+function dayLabel(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "long",
+  }).format(new Date(y, m - 1, d));
+}
+
+/* ---------- page ---------- */
 function FinancePage() {
+  const qc = useQueryClient();
   const [month, setMonth] = useState<string>(currentMonth());
-  type FinTab = "overview" | "categories" | "planning";
-  const [tab, setTab] = useState<FinTab>("overview");
+  const [editingDay, setEditingDay] = useState<string | null>(null);
+  const isMobile = useIsMobile();
 
-  const cats = useQuery({ queryKey: ["fin", "categories"], queryFn: fetchCategories });
-  const tx = useQuery({ queryKey: ["fin", "transactions"], queryFn: fetchTransactions });
-  const plans = useQuery({
-    queryKey: ["fin", "plans", month],
-    queryFn: () => fetchMonthlyPlans(month),
-  });
-  const daily = useQuery({
-    queryKey: ["fin", "daily", month],
-    queryFn: () => fetchDailyExpenses(month),
-  });
+  const monthsQuery = useQuery({ queryKey: ["finance", "months"], queryFn: fetchAllMonths });
+  const daysQuery = useQuery({ queryKey: ["finance", "days"], queryFn: fetchAllDays });
 
-  const categories = cats.data ?? [];
-  const expenseCategories = categories.filter((c) => c.type === "expense");
-  const transactions = tx.data ?? [];
-  const monthPlans = plans.data ?? [];
-  const monthExpenses = daily.data ?? [];
+  const months = monthsQuery.data ?? [];
+  const allDays = daysQuery.data ?? [];
 
-  const breakdowns = useMemo(
-    () =>
-      buildCategoryBreakdowns(
-        month,
-        monthPlans,
-        monthExpenses,
-        expenseCategories.map((c) => c.id),
-      ),
-    [month, monthPlans, monthExpenses, expenseCategories],
+  // Opening balance for selected month: closing of all months before it.
+  const openingBalance = useMemo(() => {
+    const earlier = months
+      .map((c) => c.month)
+      .concat(allDays.map((d) => d.date.slice(0, 7)))
+      .filter((m) => m < month);
+    const earliest = earlier.length ? earlier.sort()[0] : month;
+    if (earliest >= month) return 0;
+    let opening = 0;
+    let cursor = earliest;
+    while (cursor < month) {
+      const cfg = months.find((c) => c.month === cursor);
+      const monthDays = allDays.filter((d) => d.date.startsWith(cursor));
+      const { closingBalance } = buildDayRows(cursor, opening, cfg, monthDays);
+      opening = closingBalance;
+      cursor = shiftMonth(cursor, 1);
+    }
+    return opening;
+  }, [months, allDays, month]);
+
+  const monthConfig = months.find((c) => c.month === month);
+  const monthDays = useMemo(
+    () => allDays.filter((d) => d.date.startsWith(month)),
+    [allDays, month],
   );
 
-  const monthTransactions = useMemo(
-    () => transactions.filter((t) => monthOf(t.occurred_at) === month),
-    [transactions, month],
+  const { rows } = useMemo(
+    () => buildDayRows(month, openingBalance, monthConfig, monthDays),
+    [month, openingBalance, monthConfig, monthDays],
   );
+  const summary = useMemo(() => summarizeMonth(rows, openingBalance), [rows, openingBalance]);
 
-  const summary = buildMonthSummary(month, monthTransactions, breakdowns);
+  // Year projection (only meaningful for current/future months — but always show full year)
+  const projection = useMemo(() => {
+    // Anchor projection at the earliest of (current real month, viewed month) so the first
+    // months align with reality. We start from January of the viewed year for a clean line.
+    const [y] = month.split("-");
+    const start = `${y}-01`;
+    return buildYearProjection(start, 0, months, allDays);
+  }, [month, months, allDays]);
 
-  const loading = cats.isLoading || plans.isLoading || daily.isLoading || tx.isLoading;
+  const editingRow = editingDay ? rows.find((r) => r.date === editingDay) ?? null : null;
 
-  // Swipe entre abas no mobile
-  const touchStartX = useRef<number | null>(null);
-  function onTouchStart(e: React.TouchEvent) {
-    touchStartX.current = e.touches[0].clientX;
-  }
-  const order: FinTab[] = ["overview", "categories", "planning"];
-  function onTouchEnd(e: React.TouchEvent) {
-    if (touchStartX.current == null) return;
-    const dx = e.changedTouches[0].clientX - touchStartX.current;
-    touchStartX.current = null;
-    if (Math.abs(dx) < 60) return;
-    const idx = order.indexOf(tab);
-    if (dx < 0 && idx < order.length - 1) setTab(order[idx + 1]);
-    if (dx > 0 && idx > 0) setTab(order[idx - 1]);
-  }
+  const updateMonthMutation = useMutation({
+    mutationFn: upsertMonth,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "months"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const upsertDayMutation = useMutation({
+    mutationFn: upsertDay,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "days"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteDayMutation = useMutation({
+    mutationFn: deleteDay,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["finance", "days"] });
+      setEditingDay(null);
+      toast.success("Dia limpo");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   return (
-    <div className="space-y-12 pb-16">
-      {/* ---------- Header ---------- */}
-      <header className="flex flex-wrap items-end justify-between gap-6">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            Finanças
-          </p>
-          <h1 className="mt-1 text-4xl font-semibold tracking-tight">
-            {capitalize(formatMonth(month))}
-          </h1>
-        </div>
-        <MonthSwitcher month={month} onChange={setMonth} />
-      </header>
+    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 md:px-8">
+      <Header
+        month={month}
+        onPrev={() => setMonth(shiftMonth(month, -1))}
+        onNext={() => setMonth(shiftMonth(month, 1))}
+        onToday={() => setMonth(currentMonth())}
+      />
 
-      {loading ? (
-        <div className="flex justify-center py-16">
-          <Pulse />
-        </div>
-      ) : (
-        <Tabs value={tab} onValueChange={(v) => setTab(v as FinTab)}>
-          <TabsList className="h-10 w-full justify-start gap-1 rounded-full bg-secondary/60 p-1 md:w-auto">
-            <TabsTrigger value="overview" className="flex-1 rounded-full px-4 md:flex-none">
-              Visão geral
-            </TabsTrigger>
-            <TabsTrigger value="categories" className="flex-1 rounded-full px-4 md:flex-none">
-              Por categoria
-            </TabsTrigger>
-            <TabsTrigger value="planning" className="flex-1 rounded-full px-4 md:flex-none">
-              Planejamento
-            </TabsTrigger>
-          </TabsList>
+      <MonthConfigCard
+        month={month}
+        config={monthConfig}
+        onSave={(variable) =>
+          updateMonthMutation.mutate({ month, variable_amount: variable })
+        }
+      />
 
-          <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-            <TabsContent value="overview" className="mt-8 space-y-12">
-              <MetricsBar
-                income={summary.income}
-                expenseTotal={summary.expenseTotal}
-                plannedVariables={summary.planned}
-                currentVariables={summary.projected}
-                plannedDaily={summary.plannedDailyTotal}
-                currentDaily={summary.currentDailyTotal}
-              />
+      <SummaryCard summary={summary} openingBalance={openingBalance} />
 
-              <DailyEntrySection
-                month={month}
-                categories={expenseCategories}
-                expenses={monthExpenses}
-              />
+      <DayTable
+        rows={rows}
+        onSelectDay={(date) => setEditingDay(date)}
+      />
 
-              <TransactionsSection
-                month={month}
-                categories={categories}
-                transactions={monthTransactions}
-              />
-            </TabsContent>
+      <ProjectionCard projection={projection} highlightMonth={month} />
 
-            <TabsContent value="categories" className="mt-8">
-              <PlanSection
-                month={month}
-                categories={expenseCategories}
-                breakdowns={breakdowns}
-                allCategories={categories}
-              />
-            </TabsContent>
-
-            <TabsContent value="planning" className="mt-8">
-              <PlanningTab
-                month={month}
-                categories={categories}
-                plans={monthPlans}
-              />
-            </TabsContent>
-          </div>
-        </Tabs>
-      )}
+      <DayEditor
+        open={!!editingRow}
+        isMobile={isMobile}
+        row={editingRow}
+        suggestedDaily={suggestedDaily(monthConfig?.variable_amount ?? 0, month)}
+        onClose={() => setEditingDay(null)}
+        onSave={(input) => {
+          upsertDayMutation.mutate(input, {
+            onSuccess: () => {
+              setEditingDay(null);
+              toast.success("Dia atualizado");
+            },
+          });
+        }}
+        onClear={(date) => deleteDayMutation.mutate(date)}
+      />
     </div>
   );
 }
 
-/* ============================================================
- * Month switcher
- * ============================================================ */
-
-function MonthSwitcher({
+/* ---------- header ---------- */
+function Header({
   month,
-  onChange,
+  onPrev,
+  onNext,
+  onToday,
 }: {
   month: string;
-  onChange: (m: string) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onToday: () => void;
 }) {
   const isCurrent = month === currentMonth();
   return (
-    <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card p-1 text-sm">
-      <button
-        onClick={() => onChange(shiftMonth(month, -1))}
-        className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-        aria-label="Mês anterior"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-      </button>
-      <button
-        onClick={() => onChange(currentMonth())}
-        className={cn(
-          "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-          isCurrent
-            ? "bg-foreground text-background"
-            : "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        Hoje
-      </button>
-      <button
-        onClick={() => onChange(shiftMonth(month, +1))}
-        className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-        aria-label="Próximo mês"
-      >
-        <ArrowRight className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
-}
-
-/* ============================================================
- * Metrics bar
- * Four blocks aligned in a single horizontal row:
- *   Entradas | Saídas | Variáveis (prévia ↔ atual) | Média diária (prévia ↔ atual)
- * The "atual" value is the headline; the "prévia" sits below as context with a
- * small delta. Subtractive design — no cards, just rhythm and dividers.
- * ============================================================ */
-
-function MetricsBar({
-  income,
-  expenseTotal,
-  plannedVariables,
-  currentVariables,
-  plannedDaily,
-  currentDaily,
-  onAddIncome,
-  onAddExpense,
-  onAddVariable,
-}: {
-  income: number;
-  expenseTotal: number;
-  plannedVariables: number;
-  currentVariables: number;
-  plannedDaily: number;
-  currentDaily: number;
-  onAddIncome?: () => void;
-  onAddExpense?: () => void;
-  onAddVariable?: () => void;
-}) {
-  return (
-    <section className="grid grid-cols-2 gap-x-2 gap-y-6 rounded-2xl border border-border bg-card p-6 md:grid-cols-4 md:gap-x-0 md:divide-x md:divide-border md:p-0">
-      <Metric
-        label="Entradas"
-        value={income}
-        tone="income"
-        onAdd={onAddIncome}
-        className="md:px-6 md:py-6"
-      />
-      <Metric
-        label="Saídas"
-        value={expenseTotal}
-        tone="expense"
-        prefix="−"
-        onAdd={onAddExpense}
-        className="md:px-6 md:py-6"
-      />
-      <PairedMetric
-        label="Variáveis"
-        previa={plannedVariables}
-        atual={currentVariables}
-        invert
-        onAdd={onAddVariable}
-        className="md:px-6 md:py-6"
-      />
-      <PairedMetric
-        label="Média diária"
-        previa={plannedDaily}
-        atual={currentDaily}
-        className="md:px-6 md:py-6"
-      />
-    </section>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  tone,
-  prefix,
-  onAdd,
-  className,
-}: {
-  label: string;
-  value: number;
-  tone?: "income" | "expense";
-  prefix?: string;
-  onAdd?: () => void;
-  className?: string;
-}) {
-  const color =
-    tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : "text-foreground";
-  return (
-    <div className={cn("min-w-0", className)}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          {label}
-        </p>
-        {onAdd && <AddButton onClick={onAdd} label={`Adicionar ${label.toLowerCase()}`} />}
+    <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div>
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Finanças</p>
+        <h1 className="text-2xl font-semibold capitalize tracking-tight md:text-3xl">
+          {formatMonthLabel(month)}
+        </h1>
       </div>
-      <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", color)}>
-        {prefix}
-        {formatCurrency(value)}
-      </p>
-      {/* keep vertical rhythm aligned with PairedMetric */}
-      <p className="mt-1 h-4 text-[11px] text-muted-foreground" aria-hidden />
-    </div>
-  );
-}
-
-/**
- * Shows "atual" big with "prévia" small underneath.
- * If `invert` is true, going OVER the prévia is bad (red); otherwise UNDER is good
- * (less spending = green for "Média diária"; more leftover = green for "Variáveis").
- * For both metrics here, "atual < prévia" means under budget → green.
- */
-function PairedMetric({
-  label,
-  previa,
-  atual,
-  invert,
-  onAdd,
-  className,
-}: {
-  label: string;
-  previa: number;
-  atual: number;
-  /** present for API symmetry; both metrics treat atual<prévia as positive */
-  invert?: boolean;
-  onAdd?: () => void;
-  className?: string;
-}) {
-  void invert;
-  const delta = atual - previa;
-  const hasPlan = previa > 0;
-  const isOver = delta > 0.005;
-  const isUnder = delta < -0.005;
-  const color = !hasPlan
-    ? "text-foreground"
-    : isOver
-      ? "text-expense"
-      : isUnder
-        ? "text-income"
-        : "text-foreground";
-  return (
-    <div className={cn("min-w-0", className)}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          {label}
-        </p>
-        {onAdd && <AddButton onClick={onAdd} label={`Definir ${label.toLowerCase()}`} />}
-      </div>
-      <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", color)}>
-        {formatCurrency(atual)}
-      </p>
-      <p className="mt-1 h-4 truncate text-[11px] text-muted-foreground tabular-nums">
-        {hasPlan ? (
-          <>
-            prévia {formatCurrency(previa)}
-            {(isOver || isUnder) && (
-              <span className={cn("ml-1.5", isOver ? "text-expense" : "text-income")}>
-                {isOver ? "↑" : "↓"} {formatCurrency(Math.abs(delta))}
-              </span>
-            )}
-          </>
-        ) : (
-          "sem planejamento"
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="icon" onClick={onPrev} aria-label="Mês anterior">
+          <ArrowLeft />
+        </Button>
+        {!isCurrent && (
+          <Button variant="ghost" size="sm" onClick={onToday}>
+            Hoje
+          </Button>
         )}
-      </p>
-    </div>
+        <Button variant="ghost" size="icon" onClick={onNext} aria-label="Próximo mês">
+          <ArrowRight />
+        </Button>
+      </div>
+    </header>
   );
 }
 
-function AddButton({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-foreground hover:bg-secondary hover:text-foreground"
-    >
-      <Plus className="h-3 w-3" />
-    </button>
-  );
-}
-
-/* ============================================================
- * Plan section — categories with planned vs realized
- * Each row is a horizontal "ledger line": progress bar + numbers.
- * ============================================================ */
-
-function PlanSection({
+/* ---------- month config ---------- */
+function MonthConfigCard({
   month,
-  categories,
-  breakdowns,
-  allCategories,
-}: {
-  month: string;
-  categories: Category[];
-  breakdowns: CategoryBreakdown[];
-  allCategories: Category[];
-}) {
-  const qc = useQueryClient();
-  const [editing, setEditing] = useState<string | null>(null);
-
-  const setPlan = useMutation({
-    mutationFn: upsertMonthlyPlan,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["fin", "plans", month] });
-      setEditing(null);
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  return (
-    <section className="space-y-5">
-      <SectionHeader
-        eyebrow="Planejamento"
-        title="Categorias do mês"
-        description="Defina o teto de cada categoria. A média diária é calculada automaticamente."
-        action={
-          <NewCategoryButton type="expense" allCategories={allCategories} />
-        }
-      />
-
-      {categories.length === 0 ? (
-        <EmptyHint
-          message="Nenhuma categoria de despesa ainda."
-          hint="Crie uma para começar a planejar."
-        />
-      ) : (
-        <ul className="overflow-hidden rounded-2xl border border-border bg-card">
-          {categories.map((cat, i) => {
-            const b = breakdowns.find((x) => x.category_id === cat.id);
-            return (
-              <li
-                key={cat.id}
-                className={cn(
-                  "px-5 py-4 transition-colors hover:bg-secondary/30",
-                  i > 0 && "border-t border-border",
-                )}
-              >
-                <PlanRow
-                  category={cat}
-                  breakdown={b}
-                  editing={editing === cat.id}
-                  onEdit={() => setEditing(cat.id)}
-                  onCancel={() => setEditing(null)}
-                  onSave={(planned_amount) =>
-                    setPlan.mutate({ category_id: cat.id, month, planned_amount })
-                  }
-                />
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function PlanRow({
-  category,
-  breakdown,
-  editing,
-  onEdit,
-  onCancel,
+  config,
   onSave,
 }: {
-  category: Category;
-  breakdown: CategoryBreakdown | undefined;
-  editing: boolean;
-  onEdit: () => void;
-  onCancel: () => void;
-  onSave: (amount: number) => void;
+  month: string;
+  config: FinanceMonth | undefined;
+  onSave: (variable: number) => void;
 }) {
-  const planned = breakdown?.planned ?? 0;
-  const realized = breakdown?.realized ?? 0;
-  const ratio = planned > 0 ? Math.min(realized / planned, 1.5) : 0;
-  const overshoot = ratio > 1;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const variable = config?.variable_amount ?? 0;
+  const daily = suggestedDaily(variable, month);
 
-  const [draft, setDraft] = useState<string>(planned > 0 ? String(planned) : "");
+  useEffect(() => {
+    setDraft(formatInput(variable));
+  }, [variable, editing]);
 
   return (
-    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] md:items-center">
-      {/* Left: name + daily averages (prévia ↔ agora) */}
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{category.name}</p>
-        {planned > 0 && breakdown ? (
-          (() => {
-            const previa = breakdown.plannedDaily;
-            const agora = breakdown.currentDaily;
-            const diff = agora - previa;
-            const isOver = diff > 0.005;
-            const isUnder = diff < -0.005;
-            return (
-              <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-                prévia {formatCurrency(previa)}/dia
-                <span
-                  className={cn(
-                    "ml-1.5",
-                    isOver ? "text-expense" : isUnder ? "text-income" : "",
-                  )}
-                >
-                  · agora {formatCurrency(agora)}/dia
-                </span>
-              </p>
-            );
-          })()
-        ) : (
-          <p className="mt-0.5 text-[11px] text-muted-foreground">sem planejamento</p>
-        )}
-      </div>
-
-      {/* Middle: progress bar with values */}
-      <div className="min-w-0">
-        <div className="flex items-baseline justify-between text-xs tabular-nums">
-          <span className={cn("font-semibold", overshoot ? "text-expense" : "text-foreground")}>
-            {formatCurrency(realized)}
-          </span>
-          <span className="text-muted-foreground">
-            de {planned > 0 ? formatCurrency(planned) : "—"}
-          </span>
-        </div>
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary">
-          <div
-            className={cn(
-              "h-full transition-[width] duration-500",
-              overshoot ? "bg-expense" : "bg-foreground",
-            )}
-            style={{ width: `${Math.min(ratio, 1) * 100}%` }}
-          />
-          {overshoot && (
-            <div
-              className="-mt-1.5 h-1.5 bg-expense/40"
-              style={{ width: `${Math.min((ratio - 1) * 100, 50)}%` }}
-            />
+    <div className="rounded-xl border bg-card p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            Variável do mês
+          </p>
+          {editing ? (
+            <div className="flex items-center gap-2">
+              <span className="text-lg text-muted-foreground">R$</span>
+              <Input
+                autoFocus
+                inputMode="decimal"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    onSave(parseAmount(draft));
+                    setEditing(false);
+                  } else if (e.key === "Escape") {
+                    setEditing(false);
+                  }
+                }}
+                onBlur={() => {
+                  onSave(parseAmount(draft));
+                  setEditing(false);
+                }}
+                className="h-9 w-32 text-lg"
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditing(true)}
+              className="group flex items-center gap-2 text-2xl font-semibold tracking-tight hover:text-primary"
+            >
+              {formatCurrency(variable)}
+              <Pencil className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-60" />
+            </button>
           )}
         </div>
-      </div>
-
-      {/* Right: action */}
-      <div className="flex justify-end">
-        {editing ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const v = Number(draft.replace(",", "."));
-              if (!Number.isFinite(v) || v < 0) {
-                toast.error("Valor inválido.");
-                return;
-              }
-              onSave(v);
-            }}
-            className="flex items-center gap-1"
-          >
-            <Input
-              autoFocus
-              type="number"
-              step="0.01"
-              min="0"
-              inputMode="decimal"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              className="h-8 w-28 text-right text-sm"
-              placeholder="0,00"
-            />
-            <button
-              type="submit"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-              aria-label="Salvar"
-            >
-              <Check className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-              aria-label="Cancelar"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </form>
-        ) : (
-          <button
-            onClick={onEdit}
-            className="rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
-          >
-            {planned > 0 ? "Ajustar" : "Definir teto"}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
- * Daily entry — record real expenses for a day
- * ============================================================ */
-
-function DailyEntrySection({
-  month,
-  categories,
-  expenses,
-}: {
-  month: string;
-  categories: Category[];
-  expenses: DailyExpense[];
-}) {
-  const qc = useQueryClient();
-  const today = todayIso();
-  const defaultDate = monthOf(today) === month ? today : `${month}-01`;
-
-  const [date, setDate] = useState<string>(defaultDate);
-  const [categoryId, setCategoryId] = useState<string>("");
-  const [amount, setAmount] = useState<string>("");
-
-  const save = useMutation({
-    mutationFn: upsertDailyExpense,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["fin", "daily", month] });
-      setAmount("");
-      toast.success("Gasto registrado");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const remove = useMutation({
-    mutationFn: deleteDailyExpense,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["fin", "daily", month] }),
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const v = Number(amount.replace(",", "."));
-    if (!Number.isFinite(v) || v <= 0) {
-      toast.error("Informe um valor maior que zero.");
-      return;
-    }
-    if (!categoryId) {
-      toast.error("Selecione uma categoria.");
-      return;
-    }
-    save.mutate({ category_id: categoryId, date, amount: v });
-  }
-
-  // Group expenses by date desc
-  const grouped = useMemo(() => {
-    const map = new Map<string, DailyExpense[]>();
-    for (const e of expenses) {
-      const list = map.get(e.date) ?? [];
-      list.push(e);
-      map.set(e.date, list);
-    }
-    return [...map.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
-  }, [expenses]);
-
-  return (
-    <section className="space-y-5">
-      <SectionHeader
-        eyebrow="Execução"
-        title="Gastos do dia"
-        description="Registre o valor real de cada categoria. Dias sem registro usam a média planejada."
-      />
-
-      <form
-        onSubmit={submit}
-        className="grid gap-2 rounded-2xl border border-border bg-card p-4 md:grid-cols-[140px_minmax(0,1fr)_140px_auto]"
-      >
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="h-10"
-        />
-        <Select value={categoryId} onValueChange={setCategoryId}>
-          <SelectTrigger className="h-10">
-            <SelectValue placeholder="Categoria" />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          type="number"
-          step="0.01"
-          min="0"
-          inputMode="decimal"
-          placeholder="R$ 0,00"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          className="h-10 text-right tabular-nums"
-        />
-        <Button type="submit" disabled={save.isPending} className="h-10">
-          <Plus className="mr-1 h-4 w-4" /> Registrar
-        </Button>
-      </form>
-
-      {grouped.length === 0 ? (
-        <EmptyHint
-          message="Nenhum gasto registrado neste mês."
-          hint="Adicione um para começar a substituir a previsão."
-        />
-      ) : (
-        <ul className="space-y-3">
-          {grouped.map(([day, items]) => {
-            const total = items.reduce((a, e) => a + Number(e.amount), 0);
-            return (
-              <li key={day} className="overflow-hidden rounded-xl border border-border bg-card">
-                <div className="flex items-baseline justify-between border-b border-border px-4 py-2">
-                  <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    {formatDate(day)}
-                  </span>
-                  <span className="text-sm font-semibold tabular-nums text-expense">
-                    {formatCurrency(total)}
-                  </span>
-                </div>
-                <ul className="divide-y divide-border">
-                  {items.map((e) => {
-                    const cat = categories.find((c) => c.id === e.category_id);
-                    return (
-                      <li
-                        key={e.id}
-                        className="group flex items-center justify-between px-4 py-2.5 hover:bg-secondary/30"
-                      >
-                        <span className="text-sm">{cat?.name ?? "—"}</span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm tabular-nums">
-                            {formatCurrency(Number(e.amount))}
-                          </span>
-                          <button
-                            onClick={() => remove.mutate(e.id)}
-                            className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                            aria-label="Remover"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-/* ============================================================
- * Transactions section — entradas e saídas avulsas (one-off)
- * Useful for income (salário) and lump-sum expenses.
- * ============================================================ */
-
-function TransactionsSection({
-  month,
-  categories,
-  transactions,
-}: {
-  month: string;
-  categories: Category[];
-  transactions: Transaction[];
-}) {
-  const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
-
-  const create = useMutation({
-    mutationFn: createTransaction,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["fin", "transactions"] });
-      setOpen(false);
-      toast.success("Lançamento adicionado");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const remove = useMutation({
-    mutationFn: deleteTransaction,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["fin", "transactions"] }),
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  return (
-    <section className="space-y-5">
-      <SectionHeader
-        eyebrow="Movimentações"
-        title="Entradas e saídas avulsas"
-        description="Registre salários, recebimentos e despesas pontuais que não entram no plano."
-        action={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setOpen((v) => !v)}
-            className="h-8 rounded-full"
-          >
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            Novo lançamento
-          </Button>
-        }
-      />
-
-      {open && (
-        <QuickTransactionForm
-          month={month}
-          categories={categories}
-          onSubmit={(input) => create.mutate(input)}
-          onCancel={() => setOpen(false)}
-          pending={create.isPending}
-        />
-      )}
-
-      {transactions.length === 0 ? (
-        <EmptyHint
-          message="Sem lançamentos avulsos neste mês."
-          hint="Use para salário, freelas e despesas únicas."
-        />
-      ) : (
-        <ul className="overflow-hidden rounded-2xl border border-border bg-card">
-          {transactions.map((t, i) => {
-            const isIncome = t.type === "income";
-            const cat = categories.find((c) => c.id === t.category_id);
-            return (
-              <li
-                key={t.id}
-                className={cn(
-                  "group flex items-center gap-4 px-5 py-3.5 hover:bg-secondary/30",
-                  i > 0 && "border-t border-border",
-                )}
-              >
-                <span
-                  className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded-full",
-                    isIncome ? "bg-income/10 text-income" : "bg-expense/10 text-expense",
-                  )}
-                >
-                  {isIncome ? (
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  ) : (
-                    <ArrowDownRight className="h-3.5 w-3.5" />
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {t.description || cat?.name || (isIncome ? "Receita" : "Despesa")}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {cat?.name ?? "Sem categoria"} · {formatDate(t.occurred_at)}
-                  </p>
-                </div>
-                <span
-                  className={cn(
-                    "text-sm font-semibold tabular-nums",
-                    isIncome ? "text-income" : "text-expense",
-                  )}
-                >
-                  {isIncome ? "+" : "−"} {formatCurrency(Number(t.amount))}
-                </span>
-                <button
-                  onClick={() => remove.mutate(t.id)}
-                  className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                  aria-label="Remover"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function QuickTransactionForm({
-  month,
-  categories,
-  onSubmit,
-  onCancel,
-  pending,
-  initialType,
-  hideTypeToggle,
-}: {
-  month: string;
-  categories: Category[];
-  onSubmit: (input: {
-    type: FinancialType;
-    amount: number;
-    category_id: string | null;
-    occurred_at: string;
-    description?: string | null;
-  }) => void;
-  onCancel: () => void;
-  pending: boolean;
-  initialType?: FinancialType;
-  hideTypeToggle?: boolean;
-}) {
-  const [type, setType] = useState<FinancialType>(initialType ?? "income");
-  const [amount, setAmount] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const today = todayIso();
-  const [date, setDate] = useState(monthOf(today) === month ? today : `${month}-01`);
-  const [description, setDescription] = useState("");
-
-  const filtered = categories.filter((c) => c.type === type);
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const v = Number(amount.replace(",", "."));
-    if (!Number.isFinite(v) || v <= 0) {
-      toast.error("Valor inválido.");
-      return;
-    }
-    onSubmit({
-      type,
-      amount: v,
-      category_id: categoryId || null,
-      occurred_at: date,
-      description: description.trim() || null,
-    });
-  }
-
-  return (
-    <form
-      onSubmit={submit}
-      className="space-y-3 rounded-2xl border border-border bg-card p-4"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        {!hideTypeToggle && (
-        <div className="inline-flex rounded-full border border-border bg-secondary/40 p-0.5 text-xs">
-          {(["income", "expense"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => {
-                setType(t);
-                setCategoryId("");
-              }}
-              className={cn(
-                "rounded-full px-3 py-1 transition-colors",
-                type === t
-                  ? t === "income"
-                    ? "bg-card text-income shadow-sm"
-                    : "bg-card text-expense shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t === "income" ? "Entrada" : "Saída"}
-            </button>
-          ))}
-        </div>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-            Cancelar
-          </Button>
-          <Button type="submit" size="sm" disabled={pending}>
-            Adicionar
-          </Button>
+        <div className="text-right">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Diário sugerido</p>
+          <p className="text-2xl font-semibold tracking-tight">{formatCurrency(daily)}</p>
         </div>
       </div>
-      <div className="grid gap-2 md:grid-cols-[140px_minmax(0,1fr)_140px]">
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="h-10"
-        />
-        <Select value={categoryId} onValueChange={setCategoryId}>
-          <SelectTrigger className="h-10">
-            <SelectValue placeholder="Categoria (opcional)" />
-          </SelectTrigger>
-          <SelectContent>
-            {filtered.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          type="number"
-          step="0.01"
-          min="0"
-          inputMode="decimal"
-          placeholder="R$ 0,00"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          className="h-10 text-right tabular-nums"
-        />
-      </div>
-      <Input
-        placeholder="Descrição (opcional)"
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        className="h-10"
-      />
-    </form>
-  );
-}
-
-/* ============================================================
- * New category popover
- * ============================================================ */
-
-function NewCategoryButton({
-  type,
-  allCategories,
-}: {
-  type: FinancialType;
-  allCategories: Category[];
-}) {
-  const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-
-  const create = useMutation({
-    mutationFn: createCategory,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["fin", "categories"] });
-      setName("");
-      setOpen(false);
-      toast.success("Categoria criada");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const remove = useMutation({
-    mutationFn: deleteCategory,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["fin", "categories"] }),
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const filtered = allCategories.filter((c) => c.type === type);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 rounded-full">
-          <Plus className="mr-1 h-3.5 w-3.5" />
-          Categoria
-          <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 p-3">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!name.trim()) return;
-            create.mutate({ name, type });
-          }}
-          className="flex gap-2"
-        >
-          <Input
-            autoFocus
-            placeholder="Nova categoria"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="h-9"
-          />
-          <Button type="submit" size="sm" disabled={create.isPending}>
-            <Check className="h-4 w-4" />
-          </Button>
-        </form>
-        {filtered.length > 0 && (
-          <ul className="mt-3 space-y-1">
-            {filtered.map((c) => (
-              <li
-                key={c.id}
-                className="group flex items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-secondary"
-              >
-                <span>{c.name}</span>
-                <button
-                  onClick={() => remove.mutate(c.id)}
-                  className="rounded-md p-1 text-muted-foreground opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                  aria-label="Remover"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/* ============================================================
- * Shared bits
- * ============================================================ */
-
-function SectionHeader({
-  eyebrow,
-  title,
-  description,
-  action,
-}: {
-  eyebrow: string;
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-3">
-      <div>
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          {eyebrow}
-        </p>
-        <h2 className="mt-1 text-lg font-semibold tracking-tight">{title}</h2>
-        {description && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
-      {action}
+      <p className="mt-3 text-xs text-muted-foreground">
+        Sugestão automática dividindo a variável pelos dias do mês. Você pode sobrescrever em
+        qualquer dia da tabela.
+      </p>
     </div>
   );
 }
 
-function EmptyHint({ message, hint }: { message: string; hint?: string }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-border bg-card/40 px-6 py-10 text-center">
-      <p className="text-sm text-foreground">{message}</p>
-      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/* ============================================================
- * Planning tab — Entradas, Saídas (fixas), Estimativa de variáveis
- * Tudo aqui edita os valores planejados do mês.
- * ============================================================ */
-
-function PlanningTab({
-  month,
-  categories,
-  plans,
+/* ---------- summary ---------- */
+function SummaryCard({
+  summary,
+  openingBalance,
 }: {
-  month: string;
-  categories: Category[];
-  plans: MonthlyPlan[];
+  summary: ReturnType<typeof summarizeMonth>;
+  openingBalance: number;
 }) {
-  const incomeCats = categories.filter((c) => c.type === "income");
-  const fixedCats = categories.filter((c) => c.type === "expense" && !c.is_variable);
-  const variableCats = categories.filter((c) => c.type === "expense" && c.is_variable);
-
-  const totalIncome = sumPlanned(incomeCats, plans, month);
-  const totalFixed = sumPlanned(fixedCats, plans, month);
-  const totalVariable = sumPlanned(variableCats, plans, month);
-  const leftover = totalIncome - totalFixed - totalVariable;
-
   return (
-    <div className="space-y-12">
-      {/* Resumo do plano — orienta a leitura sem competir com as edições */}
-      <section className="grid grid-cols-2 gap-x-2 gap-y-6 rounded-2xl border border-border bg-card p-6 md:grid-cols-4 md:gap-x-0 md:divide-x md:divide-border md:p-0">
-        <PlanSummaryItem label="Entradas" value={totalIncome} tone="income" className="md:px-6 md:py-6" />
-        <PlanSummaryItem label="Saídas fixas" value={totalFixed} tone="expense" prefix="−" className="md:px-6 md:py-6" />
-        <PlanSummaryItem label="Variáveis" value={totalVariable} tone="expense" prefix="−" className="md:px-6 md:py-6" />
-        <PlanSummaryItem
-          label="Sobra prevista"
-          value={leftover}
-          tone={leftover >= 0 ? "income" : "expense"}
-          className="md:px-6 md:py-6"
-        />
-      </section>
-
-      <PlanGroupSection
-        eyebrow="Planejamento"
-        title="Entradas"
-        description="Salário, freelas, recorrências. Defina o esperado para o mês."
-        emptyMessage="Nenhuma fonte de entrada cadastrada."
-        emptyHint="Adicione sua primeira fonte de receita."
-        month={month}
-        categories={incomeCats}
-        plans={plans}
-        type="income"
-      />
-
-      <PlanGroupSection
-        eyebrow="Planejamento"
-        title="Saídas fixas"
-        description="Aluguel, assinaturas, contas — gastos previsíveis todo mês."
-        emptyMessage="Nenhuma saída fixa cadastrada."
-        emptyHint="Adicione contas e assinaturas que se repetem."
-        month={month}
-        categories={fixedCats}
-        plans={plans}
-        type="expense"
-        is_variable={false}
-      />
-
-      <PlanGroupSection
-        eyebrow="Planejamento"
-        title="Estimativa de variáveis"
-        description="Mercado, transporte, lazer — categorias que oscilam dia a dia."
-        emptyMessage="Nenhuma categoria variável cadastrada."
-        emptyHint="Adicione áreas onde você quer um teto mensal."
-        month={month}
-        categories={variableCats}
-        plans={plans}
-        type="expense"
-        is_variable={true}
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-5">
+      <Stat label="Saldo inicial" value={openingBalance} />
+      <Stat label="Entradas" value={summary.totalEntrada} tone="positive" />
+      <Stat label="Saídas" value={summary.totalSaida} tone="negative" />
+      <Stat label="Diário" value={summary.totalDiario} tone="negative" />
+      <Stat
+        label="Performance"
+        value={summary.performance}
+        tone={summary.performance >= 0 ? "positive" : "negative"}
+        emphasize
       />
     </div>
   );
 }
 
-function sumPlanned(cats: Category[], plans: MonthlyPlan[], month: string): number {
-  let total = 0;
-  for (const c of cats) {
-    const p = plans.find((x) => x.category_id === c.id && x.month === month);
-    if (p) total += Number(p.planned_amount);
-  }
-  return total;
-}
-
-function PlanSummaryItem({
+function Stat({
   label,
   value,
   tone,
-  prefix,
-  className,
+  emphasize,
 }: {
   label: string;
   value: number;
-  tone?: "income" | "expense";
-  prefix?: string;
-  className?: string;
+  tone?: "positive" | "negative";
+  emphasize?: boolean;
 }) {
-  const color =
-    tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : "text-foreground";
   return (
-    <div className={cn("min-w-0", className)}>
-      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </p>
-      <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", color)}>
-        {prefix}
-        {formatCurrency(Math.abs(value))}
+    <div className="bg-card p-4">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p
+        className={cn(
+          "mt-1 font-semibold tracking-tight",
+          emphasize ? "text-xl" : "text-base",
+          tone === "positive" && value > 0 && "text-emerald-600 dark:text-emerald-400",
+          tone === "negative" && value > 0 && "text-rose-600 dark:text-rose-400",
+          tone === "positive" && value < 0 && "text-rose-600 dark:text-rose-400",
+        )}
+      >
+        {formatCurrency(value)}
       </p>
     </div>
   );
 }
 
-function PlanGroupSection({
-  eyebrow,
-  title,
-  description,
-  emptyMessage,
-  emptyHint,
-  month,
-  categories,
-  plans,
-  type,
-  is_variable,
+/* ---------- day table ---------- */
+function DayTable({
+  rows,
+  onSelectDay,
 }: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  emptyMessage: string;
-  emptyHint: string;
-  month: string;
-  categories: Category[];
-  plans: MonthlyPlan[];
-  type: FinancialType;
-  is_variable?: boolean;
+  rows: DayRow[];
+  onSelectDay: (date: string) => void;
 }) {
-  const qc = useQueryClient();
-  const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState("");
-
-  const setPlan = useMutation({
-    mutationFn: upsertMonthlyPlan,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["fin", "plans", month] }),
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const addCat = useMutation({
-    mutationFn: createCategory,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["fin", "categories"] });
-      setNewName("");
-      setAdding(false);
-      toast.success("Categoria criada");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const removeCat = useMutation({
-    mutationFn: deleteCategory,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["fin", "categories"] });
-      qc.invalidateQueries({ queryKey: ["fin", "plans", month] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const total = sumPlanned(categories, plans, month);
-
-  function submitNew(e: React.FormEvent) {
-    e.preventDefault();
-    const name = newName.trim();
-    if (!name) return;
-    addCat.mutate({ name, type, is_variable: is_variable ?? true });
-  }
-
+  const today = todayIso();
   return (
-    <section className="space-y-4">
-      <SectionHeader
-        eyebrow={eyebrow}
-        title={title}
-        description={description}
-        action={
-          <div className="flex items-center gap-3">
-            {total > 0 && (
-              <span className="text-sm tabular-nums text-muted-foreground">
-                <span className="text-foreground">{formatCurrency(total)}</span> /mês
-              </span>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setAdding((v) => !v)}
-              className="h-8 rounded-full"
-            >
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              Adicionar
-            </Button>
-          </div>
-        }
-      />
-
-      {adding && (
-        <form
-          onSubmit={submitNew}
-          className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-card/40 px-3 py-2"
-        >
-          <Plus className="h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            autoFocus
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder={
-              type === "income"
-                ? "Ex.: Salário, Freelas…"
-                : is_variable
-                  ? "Ex.: Mercado, Transporte…"
-                  : "Ex.: Aluguel, Internet…"
-            }
-            className="h-8 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
-          />
-          <Button type="submit" size="sm" disabled={addCat.isPending}>
-            <Check className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setAdding(false);
-              setNewName("");
-            }}
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        </form>
-      )}
-
-      {categories.length === 0 ? (
-        <EmptyHint message={emptyMessage} hint={emptyHint} />
-      ) : (
-        <ul className="overflow-hidden rounded-2xl border border-border bg-card">
-          {categories.map((c, i) => {
-            const planned =
-              plans.find((p) => p.category_id === c.id && p.month === month)?.planned_amount ?? 0;
-            return (
-              <li
-                key={c.id}
+    <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="grid grid-cols-[44px_1fr_1fr_1fr_1.2fr] border-b bg-muted/40 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <div>Dia</div>
+        <div className="text-right">Entrada</div>
+        <div className="text-right">Saída</div>
+        <div className="text-right">Diário</div>
+        <div className="text-right">Saldo</div>
+      </div>
+      <ul className="divide-y">
+        {rows.map((r) => {
+          const isToday = r.date === today;
+          const negative = r.saldo < 0;
+          return (
+            <li key={r.date}>
+              <button
+                onClick={() => onSelectDay(r.date)}
                 className={cn(
-                  "group flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-secondary/30",
-                  i > 0 && "border-t border-border",
+                  "grid w-full grid-cols-[44px_1fr_1fr_1fr_1.2fr] items-center px-3 py-2.5 text-sm transition-colors hover:bg-muted/40",
+                  isToday && "bg-primary/5",
                 )}
               >
-                <span className="min-w-0 flex-1 truncate text-sm">{c.name}</span>
-                <PlannedAmountInput
-                  value={Number(planned)}
-                  onSave={(v) =>
-                    setPlan.mutate({ category_id: c.id, month, planned_amount: v })
-                  }
-                />
-                <button
-                  onClick={() => {
-                    if (confirm(`Remover "${c.name}"?`)) removeCat.mutate(c.id);
-                  }}
-                  className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                  aria-label="Remover categoria"
+                <div
+                  className={cn(
+                    "flex items-center gap-1 text-muted-foreground",
+                    isToday && "font-semibold text-primary",
+                  )}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
+                  <span className="tabular-nums">{String(r.dayNumber).padStart(2, "0")}</span>
+                </div>
+                <div
+                  className={cn(
+                    "text-right tabular-nums",
+                    r.entrada > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground/40",
+                  )}
+                >
+                  {r.entrada > 0 ? formatCurrencyCompact(r.entrada) : "—"}
+                </div>
+                <div
+                  className={cn(
+                    "text-right tabular-nums",
+                    r.saida > 0 ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground/40",
+                  )}
+                >
+                  {r.saida > 0 ? formatCurrencyCompact(r.saida) : "—"}
+                </div>
+                <div className="text-right tabular-nums text-muted-foreground">
+                  {formatCurrencyCompact(r.diario)}
+                </div>
+                <div
+                  className={cn(
+                    "text-right font-medium tabular-nums",
+                    negative && "text-rose-600 dark:text-rose-400",
+                    r.isProjected && !negative && "text-muted-foreground",
+                  )}
+                >
+                  {formatCurrency(r.saldo)}
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
-function PlannedAmountInput({
-  value,
-  onSave,
+/* ---------- projection ---------- */
+function ProjectionCard({
+  projection,
+  highlightMonth,
 }: {
-  value: number;
-  onSave: (v: number) => void;
+  projection: { month: string; label: string; closingBalance: number; variable: number }[];
+  highlightMonth: string;
 }) {
-  const [draft, setDraft] = useState(value > 0 ? String(value) : "");
-  // Manter sincronizado quando o valor externo muda (após mudar de mês/categoria)
-  const last = useRef(value);
-  if (last.current !== value) {
-    last.current = value;
-    setDraft(value > 0 ? String(value) : "");
-  }
-
-  function commit() {
-    const v = Number(draft.replace(",", "."));
-    if (!Number.isFinite(v) || v < 0) {
-      if (draft === "" && value > 0) {
-        onSave(0);
-      }
-      return;
-    }
-    if (Math.abs(v - value) > 0.005) onSave(v);
-  }
+  if (projection.length === 0) return null;
+  const values = projection.map((p) => p.closingBalance);
+  const min = Math.min(0, ...values);
+  const max = Math.max(0, ...values);
+  const range = max - min || 1;
 
   return (
-    <Input
-      type="number"
-      step="0.01"
-      min="0"
-      inputMode="decimal"
-      placeholder="0,00"
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.currentTarget.blur();
-        }
-      }}
-      className="h-8 w-32 text-right text-sm tabular-nums"
-    />
+    <div className="rounded-xl border bg-card p-5">
+      <div className="mb-4 flex items-baseline justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Projeção</p>
+          <h2 className="text-base font-semibold">Saldo até dezembro</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Considera o diário sugerido para meses sem registros
+        </p>
+      </div>
+
+      <div className="grid grid-cols-12 items-end gap-1 h-32">
+        {projection.map((p) => {
+          const heightPct = ((p.closingBalance - min) / range) * 100;
+          const isHighlight = p.month === highlightMonth;
+          const negative = p.closingBalance < 0;
+          return (
+            <div key={p.month} className="flex h-full flex-col items-center justify-end">
+              <div
+                className={cn(
+                  "w-full rounded-t-sm transition-colors",
+                  negative ? "bg-rose-500/70" : "bg-primary/70",
+                  isHighlight && "ring-2 ring-primary ring-offset-1 ring-offset-card",
+                )}
+                style={{ height: `${Math.max(2, heightPct)}%` }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-2 grid grid-cols-12 gap-1 text-center text-[10px] text-muted-foreground">
+        {projection.map((p) => (
+          <div key={p.month} className="capitalize">
+            {p.label.split(" ")[0].slice(0, 3)}
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 grid grid-cols-12 gap-1 text-center text-[10px] tabular-nums">
+        {projection.map((p) => (
+          <div
+            key={p.month}
+            className={cn(
+              p.closingBalance < 0 ? "text-rose-600 dark:text-rose-400" : "text-foreground",
+              p.month === highlightMonth && "font-semibold",
+            )}
+          >
+            {formatCurrencyCompact(p.closingBalance)}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
-/* ============================================================
- * Variables quick edit — modal compacto para definir tetos
- * ============================================================ */
-
-function VariablesQuickEdit({
-  month,
-  categories,
-  breakdowns,
-  onClose,
-}: {
-  month: string;
-  categories: Category[];
-  breakdowns: CategoryBreakdown[];
+/* ---------- day editor ---------- */
+interface DayEditorProps {
+  open: boolean;
+  isMobile: boolean;
+  row: DayRow | null;
+  suggestedDaily: number;
   onClose: () => void;
-}) {
-  const qc = useQueryClient();
-  const setPlan = useMutation({
-    mutationFn: upsertMonthlyPlan,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["fin", "plans", month] }),
-    onError: (e: Error) => toast.error(e.message),
-  });
+  onSave: (input: {
+    date: string;
+    entrada: number;
+    saida: number;
+    diario_override: number | null;
+    entrada_label: string | null;
+    saida_label: string | null;
+  }) => void;
+  onClear: (date: string) => void;
+}
 
-  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
-    Object.fromEntries(
-      categories.map((c) => {
-        const planned = breakdowns.find((b) => b.category_id === c.id)?.planned ?? 0;
-        return [c.id, planned > 0 ? String(planned) : ""];
-      }),
-    ),
+function DayEditor(props: DayEditorProps) {
+  const { open, isMobile, row, onClose } = props;
+  if (!row) return null;
+  const title = (
+    <span className="capitalize">{dayLabel(row.date)}</span>
   );
 
-  if (categories.length === 0) {
+  if (isMobile) {
     return (
-      <div className="py-4">
-        <EmptyHint
-          message="Nenhuma categoria de despesa ainda."
-          hint="Crie uma na aba Por categoria."
-        />
-      </div>
+      <Drawer open={open} onOpenChange={(v) => !v && onClose()}>
+        <DrawerContent>
+          <DrawerHeader className="text-left">
+            <DrawerTitle>{title}</DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-6">
+            <DayEditorForm {...props} />
+          </div>
+        </DrawerContent>
+      </Drawer>
     );
   }
 
-  async function saveAll() {
-    const tasks: Promise<unknown>[] = [];
-    for (const c of categories) {
-      const raw = drafts[c.id] ?? "";
-      const v = Number(raw.replace(",", "."));
-      const planned = breakdowns.find((b) => b.category_id === c.id)?.planned ?? 0;
-      const next = Number.isFinite(v) && v >= 0 ? v : 0;
-      if (Math.abs(next - planned) > 0.005) {
-        tasks.push(
-          setPlan.mutateAsync({ category_id: c.id, month, planned_amount: next }),
-        );
-      }
-    }
-    if (tasks.length === 0) {
-      onClose();
-      return;
-    }
-    try {
-      await Promise.all(tasks);
-      toast.success("Tetos atualizados");
-      onClose();
-    } catch {
-      // erros já tratados
-    }
-  }
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent side="right" className="w-full sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>{title}</SheetTitle>
+        </SheetHeader>
+        <div className="mt-6">
+          <DayEditorForm {...props} />
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function DayEditorForm({ row, suggestedDaily, onSave, onClear, onClose }: DayEditorProps) {
+  if (!row) return null;
+  const [entrada, setEntrada] = useState(formatInput(row.entrada));
+  const [saida, setSaida] = useState(formatInput(row.saida));
+  const [diario, setDiario] = useState(
+    row.diario === suggestedDaily ? "" : formatInput(row.diario),
+  );
+
+  useEffect(() => {
+    setEntrada(formatInput(row.entrada));
+    setSaida(formatInput(row.saida));
+    setDiario(row.diario === suggestedDaily ? "" : formatInput(row.diario));
+  }, [row.date, row.entrada, row.saida, row.diario, suggestedDaily]);
+
+  const handleSave = () => {
+    const diarioParsed = diario.trim() ? parseAmount(diario) : null;
+    onSave({
+      date: row.date,
+      entrada: parseAmount(entrada),
+      saida: parseAmount(saida),
+      diario_override: diarioParsed,
+      entrada_label: null,
+      saida_label: null,
+    });
+  };
 
   return (
-    <div className="space-y-4">
-      <ul className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
-        {categories.map((c) => (
-          <li key={c.id} className="flex items-center gap-3">
-            <span className="min-w-0 flex-1 truncate text-sm">{c.name}</span>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              inputMode="decimal"
-              placeholder="0,00"
-              value={drafts[c.id] ?? ""}
-              onChange={(e) =>
-                setDrafts((d) => ({ ...d, [c.id]: e.target.value }))
-              }
-              className="h-9 w-32 text-right tabular-nums"
-            />
-          </li>
-        ))}
-      </ul>
-      <div className="flex justify-end gap-2 border-t pt-3">
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Cancelar
+    <div className="space-y-5">
+      <Field
+        label="Entrada"
+        value={entrada}
+        onChange={setEntrada}
+        accent="positive"
+      />
+      <Field label="Saída" value={saida} onChange={setSaida} accent="negative" />
+      <Field
+        label="Diário"
+        value={diario}
+        onChange={setDiario}
+        placeholder={`Sugerido: ${formatCurrency(suggestedDaily)}`}
+        helper="Deixe em branco para usar o diário sugerido do mês."
+      />
+
+      <div className="flex items-center justify-between border-t pt-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={() => onClear(row.date)}
+        >
+          <Trash2 className="h-4 w-4" />
+          Limpar dia
         </Button>
-        <Button size="sm" onClick={saveAll} disabled={setPlan.isPending}>
-          Salvar
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            <X />
+            Cancelar
+          </Button>
+          <Button onClick={handleSave}>Salvar</Button>
+        </div>
       </div>
     </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  accent,
+  placeholder,
+  helper,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  accent?: "positive" | "negative";
+  placeholder?: string;
+  helper?: string;
+}) {
+  return (
+    <label className="block">
+      <span
+        className={cn(
+          "mb-1 block text-xs font-medium uppercase tracking-wide",
+          accent === "positive" && "text-emerald-600 dark:text-emerald-400",
+          accent === "negative" && "text-rose-600 dark:text-rose-400",
+          !accent && "text-muted-foreground",
+        )}
+      >
+        {label}
+      </span>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">R$</span>
+        <Input
+          inputMode="decimal"
+          value={value}
+          placeholder={placeholder ?? "0,00"}
+          onChange={(e) => onChange(e.target.value)}
+          className="text-base"
+        />
+      </div>
+      {helper && <p className="mt-1 text-xs text-muted-foreground">{helper}</p>}
+    </label>
   );
 }
