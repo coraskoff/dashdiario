@@ -1242,3 +1242,104 @@ function EmptyHint({ message, hint }: { message: string; hint?: string }) {
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/* ============================================================
+ * Variables quick edit — modal compacto para definir tetos
+ * ============================================================ */
+
+function VariablesQuickEdit({
+  month,
+  categories,
+  breakdowns,
+  onClose,
+}: {
+  month: string;
+  categories: Category[];
+  breakdowns: CategoryBreakdown[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const setPlan = useMutation({
+    mutationFn: upsertMonthlyPlan,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fin", "plans", month] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      categories.map((c) => {
+        const planned = breakdowns.find((b) => b.category_id === c.id)?.planned ?? 0;
+        return [c.id, planned > 0 ? String(planned) : ""];
+      }),
+    ),
+  );
+
+  if (categories.length === 0) {
+    return (
+      <div className="py-4">
+        <EmptyHint
+          message="Nenhuma categoria de despesa ainda."
+          hint="Crie uma na aba Por categoria."
+        />
+      </div>
+    );
+  }
+
+  async function saveAll() {
+    const tasks: Promise<unknown>[] = [];
+    for (const c of categories) {
+      const raw = drafts[c.id] ?? "";
+      const v = Number(raw.replace(",", "."));
+      const planned = breakdowns.find((b) => b.category_id === c.id)?.planned ?? 0;
+      const next = Number.isFinite(v) && v >= 0 ? v : 0;
+      if (Math.abs(next - planned) > 0.005) {
+        tasks.push(
+          setPlan.mutateAsync({ category_id: c.id, month, planned_amount: next }),
+        );
+      }
+    }
+    if (tasks.length === 0) {
+      onClose();
+      return;
+    }
+    try {
+      await Promise.all(tasks);
+      toast.success("Tetos atualizados");
+      onClose();
+    } catch {
+      // erros já tratados
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <ul className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+        {categories.map((c) => (
+          <li key={c.id} className="flex items-center gap-3">
+            <span className="min-w-0 flex-1 truncate text-sm">{c.name}</span>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              placeholder="0,00"
+              value={drafts[c.id] ?? ""}
+              onChange={(e) =>
+                setDrafts((d) => ({ ...d, [c.id]: e.target.value }))
+              }
+              className="h-9 w-32 text-right tabular-nums"
+            />
+          </li>
+        ))}
+      </ul>
+      <div className="flex justify-end gap-2 border-t pt-3">
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button size="sm" onClick={saveAll} disabled={setPlan.isPending}>
+          Salvar
+        </Button>
+      </div>
+    </div>
+  );
+}
