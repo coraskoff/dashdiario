@@ -493,8 +493,8 @@ function DayColumn({
   emptyText: string;
 }) {
   const [drag, setDrag] = useState(false);
+  // Completed tasks are archived in the side sheet — only pending shows here.
   const pending = tasks.filter((t) => t.status === "pending");
-  const done = tasks.filter((t) => t.status === "completed");
 
   return (
     <section
@@ -542,9 +542,6 @@ function DayColumn({
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">
           {pending.length}
-          {done.length > 0 && (
-            <span className="text-muted-foreground/60"> · {done.length}✓</span>
-          )}
         </span>
       </header>
 
