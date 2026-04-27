@@ -1069,5 +1069,249 @@ function weekRangeLabel(): string {
   return `Semana de ${fmt.format(monday)} – ${fmt.format(sunday)}`;
 }
 
+/* ---------------------- Task detail panel ---------------------- */
+
+interface TaskDetailPanelProps {
+  task: Task | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  projectsById: Record<string, { id: string; name: string; color: string | null }>;
+  projects: Project[];
+  onToggle: (t: Task) => void;
+  onEdit: (t: Task) => void;
+  onDelete: (t: Task) => void;
+  onMove: (id: string, bucket: Bucket) => void;
+  onSetDate: (id: string, date: string | null) => void;
+  onSetProject: (id: string, projectId: string | null) => void;
+}
+
+function TaskDetailPanel(props: TaskDetailPanelProps) {
+  const isMobile = useIsMobile();
+  const { task, open, onOpenChange } = props;
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent className="max-h-[88vh]">
+          {task && (
+            <>
+              <DrawerHeader className="text-left">
+                <DrawerTitle className="sr-only">{task.title}</DrawerTitle>
+                <DrawerDescription className="sr-only">Detalhes da tarefa</DrawerDescription>
+              </DrawerHeader>
+              <div className="overflow-y-auto px-4 pb-8">
+                <TaskDetailBody {...props} task={task} />
+              </div>
+            </>
+          )}
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full p-0 sm:max-w-md">
+        {task && (
+          <>
+            <SheetHeader className="sr-only">
+              <SheetTitle>{task.title}</SheetTitle>
+              <SheetDescription>Detalhes da tarefa</SheetDescription>
+            </SheetHeader>
+            <ScrollArea className="h-full">
+              <div className="px-6 py-8">
+                <TaskDetailBody {...props} task={task} />
+              </div>
+            </ScrollArea>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function TaskDetailBody({
+  task,
+  projectsById,
+  projects,
+  onToggle,
+  onEdit,
+  onDelete,
+  onMove,
+  onSetDate,
+  onSetProject,
+}: TaskDetailPanelProps & { task: Task }) {
+  const done = task.status === "completed";
+  const project = task.project_id ? projectsById[task.project_id] : null;
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+
+  const dueLabel = task.due_date
+    ? new Intl.DateTimeFormat("pt-BR", {
+        weekday: "long",
+        day: "2-digit",
+        month: "long",
+      }).format(parseIsoDate(task.due_date))
+    : "Sem data";
+
+  return (
+    <div className="space-y-6">
+      {/* Status + título */}
+      <div className="flex items-start gap-3">
+        <button
+          onClick={() => onToggle(task)}
+          aria-label={done ? "Reabrir" : "Concluir"}
+          className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors ${
+            done
+              ? "border-foreground bg-foreground text-background"
+              : "border-border hover:border-foreground"
+          }`}
+        >
+          {done && <Check className="h-3 w-3" strokeWidth={3} />}
+        </button>
+        <h2
+          className={`text-xl font-semibold leading-tight tracking-tight ${
+            done ? "text-muted-foreground line-through" : "text-foreground"
+          }`}
+        >
+          {task.title}
+        </h2>
+      </div>
+
+      {/* Metadados */}
+      <dl className="grid grid-cols-[88px_1fr] gap-y-3 text-sm">
+        <dt className="text-muted-foreground">Quando</dt>
+        <dd>
+          <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <button className="inline-flex items-center gap-2 rounded-md border border-transparent px-2 py-1 -mx-2 text-foreground hover:border-border hover:bg-secondary/60">
+                <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="capitalize">{dueLabel}</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-auto p-0">
+              <Calendar
+                mode="single"
+                selected={task.due_date ? parseIsoDate(task.due_date) : undefined}
+                onSelect={(d) => {
+                  if (d) onSetDate(task.id, toIsoLocal(d));
+                  setDatePickerOpen(false);
+                }}
+                initialFocus
+                className={cn("p-3 pointer-events-auto")}
+              />
+              {task.due_date && (
+                <div className="border-t p-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start text-xs"
+                    onClick={() => {
+                      onSetDate(task.id, null);
+                      setDatePickerOpen(false);
+                    }}
+                  >
+                    Remover data
+                  </Button>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+        </dd>
+
+        <dt className="text-muted-foreground">Projeto</dt>
+        <dd>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="inline-flex items-center gap-2 rounded-md border border-transparent px-2 py-1 -mx-2 text-foreground hover:border-border hover:bg-secondary/60">
+                {project ? (
+                  <>
+                    <span
+                      aria-hidden
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ background: projectColor(project) }}
+                    />
+                    <span>{project.name}</span>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">Sem projeto</span>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-72 w-56 overflow-y-auto">
+              <DropdownMenuItem onSelect={() => onSetProject(task.id, null)}>
+                <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                Sem projeto
+                {!task.project_id && <Check className="ml-auto h-3.5 w-3.5" />}
+              </DropdownMenuItem>
+              {projects.length > 0 && <DropdownMenuSeparator />}
+              {projects.map((p) => (
+                <DropdownMenuItem key={p.id} onSelect={() => onSetProject(task.id, p.id)}>
+                  <span
+                    aria-hidden
+                    className="mr-2 inline-block h-1.5 w-1.5 rounded-full"
+                    style={{ background: projectColor(p) }}
+                  />
+                  {p.name}
+                  {task.project_id === p.id && <Check className="ml-auto h-3.5 w-3.5" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </dd>
+      </dl>
+
+      {/* Descrição */}
+      <div>
+        <h3 className="pb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          Descrição
+        </h3>
+        {task.description ? (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+            {task.description}
+          </p>
+        ) : (
+          <p className="text-sm italic text-muted-foreground/70">Sem descrição.</p>
+        )}
+      </div>
+
+      {/* Ações */}
+      <div className="flex items-center justify-between gap-2 border-t pt-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => onEdit(task)}>
+            <Pencil className="mr-1.5 h-3.5 w-3.5" />
+            Editar
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost">
+                <ArrowRight className="mr-1.5 h-3.5 w-3.5" />
+                Mover
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={() => onMove(task.id, "week")}>
+                Sem data
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "today")}>Hoje</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "tomorrow")}>
+                Amanhã
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "later")}>Depois</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => onDelete(task)}
+          className="text-destructive hover:text-destructive"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------- Completed archive sheet ---------------------- */
 
