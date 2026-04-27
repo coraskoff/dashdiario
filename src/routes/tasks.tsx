@@ -428,9 +428,7 @@ function WeekChip({
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
   return (
-    <HoverCard openDelay={150} closeDelay={80}>
-      <HoverCardTrigger asChild>
-        <div
+    <div
           draggable
           onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
           className={`group flex max-w-full items-center gap-2 rounded-full border border-border bg-card pl-1 pr-1 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
@@ -464,10 +462,7 @@ function WeekChip({
             onToggle={onToggle}
             showProjectDot={showProjectDot}
           />
-        </div>
-      </HoverCardTrigger>
-      <TaskHoverPreview task={task} project={project} />
-    </HoverCard>
+    </div>
   );
 }
 
