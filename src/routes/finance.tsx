@@ -321,12 +321,6 @@ function PlanSection({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const removePlan = useMutation({
-    mutationFn: deleteMonthlyPlan,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["fin", "plans", month] }),
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   return (
     <section className="space-y-5">
       <SectionHeader
@@ -364,10 +358,6 @@ function PlanSection({
                   onSave={(planned_amount) =>
                     setPlan.mutate({ category_id: cat.id, month, planned_amount })
                   }
-                  onClear={() => {
-                    const planId = b && b.planned > 0 ? findPlanId(cat.id) : null;
-                    if (planId) removePlan.mutate(planId);
-                  }}
                 />
               </li>
             );
@@ -376,11 +366,6 @@ function PlanSection({
       )}
     </section>
   );
-
-  // helper closure: lookup actual plan row id
-  function findPlanId(_categoryId: string): string | null {
-    return null; // we don't keep ids here; delete by clearing to 0 instead
-  }
 }
 
 function PlanRow({
@@ -397,7 +382,6 @@ function PlanRow({
   onEdit: () => void;
   onCancel: () => void;
   onSave: (amount: number) => void;
-  onClear: () => void;
 }) {
   const planned = breakdown?.planned ?? 0;
   const realized = breakdown?.realized ?? 0;
