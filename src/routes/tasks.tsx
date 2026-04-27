@@ -892,15 +892,6 @@ function toIsoLocal(d: Date): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-function formatFullDate(iso: string): string {
-  const d = parseIsoDate(iso);
-  return new Intl.DateTimeFormat("pt-BR", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-  }).format(d);
-}
-
 function weekdayLabel(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   return new Intl.DateTimeFormat("pt-BR", { weekday: "long" })
