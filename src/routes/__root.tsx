@@ -41,13 +41,13 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Foco — Tarefas e Finanças" },
+      { title: "Foco" },
       {
         name: "description",
         content:
           "Gestão pessoal simples e elegante: organize suas tarefas e controle suas finanças em um só lugar.",
       },
-      { property: "og:title", content: "Foco — Tarefas e Finanças" },
+      { property: "og:title", content: "Foco" },
       {
         property: "og:description",
         content: "Gestão pessoal simples e elegante para tarefas e finanças.",
@@ -58,6 +58,12 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-title", content: "Dash" },
       { name: "apple-mobile-web-app-status-bar-style", content: "default" },
+      { name: "twitter:title", content: "Foco" },
+      { name: "description", content: "Manage tasks and finances with this personal productivity app." },
+      { property: "og:description", content: "Manage tasks and finances with this personal productivity app." },
+      { name: "twitter:description", content: "Manage tasks and finances with this personal productivity app." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/77a7da8a-e506-45bd-909f-7e2a619ac6dc/id-preview-a7edfe6d--103f1b89-8b2d-40b4-b63e-d234c9a13499.lovable.app-1777289344486.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/77a7da8a-e506-45bd-909f-7e2a619ac6dc/id-preview-a7edfe6d--103f1b89-8b2d-40b4-b63e-d234c9a13499.lovable.app-1777289344486.png" },
     ],
     links: [
       {
