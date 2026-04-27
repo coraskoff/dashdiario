@@ -560,7 +560,7 @@ function DayColumn({
         {loading && (
           <li className="px-3 py-6 text-sm text-muted-foreground">Carregando…</li>
         )}
-        {!loading && pending.length === 0 && done.length === 0 && (
+        {!loading && pending.length === 0 && (
           <li className="px-3 py-10 text-sm text-muted-foreground">{emptyText}</li>
         )}
         {pending.map((t) =>
@@ -575,14 +575,6 @@ function DayColumn({
             <TaskRow key={t.id} task={t} accent={accent} {...handlers} />
           ),
         )}
-        {done.length > 0 && (
-          <li className="mt-3 px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/60">
-            Concluídas
-          </li>
-        )}
-        {done.map((t) => (
-          <TaskRow key={t.id} task={t} accent={accent} {...handlers} />
-        ))}
       </ul>
     </section>
   );
