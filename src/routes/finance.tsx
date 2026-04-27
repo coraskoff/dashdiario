@@ -458,17 +458,33 @@ function PlanRow({
 
   return (
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] md:items-center">
-      {/* Left: name + daily averages */}
+      {/* Left: name + daily averages (prévia ↔ agora) */}
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{category.name}</p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-          {planned > 0
-            ? `${formatCurrency(breakdown?.plannedDaily ?? 0)}/dia previsto`
-            : "sem planejamento"}
-          {breakdown && breakdown.realizedDaily > 0
-            ? ` · ${formatCurrency(breakdown.realizedDaily)}/dia real`
-            : ""}
-        </p>
+        {planned > 0 && breakdown ? (
+          (() => {
+            const previa = breakdown.plannedDaily;
+            const agora = breakdown.currentDaily;
+            const diff = agora - previa;
+            const isOver = diff > 0.005;
+            const isUnder = diff < -0.005;
+            return (
+              <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                prévia {formatCurrency(previa)}/dia
+                <span
+                  className={cn(
+                    "ml-1.5",
+                    isOver ? "text-expense" : isUnder ? "text-income" : "",
+                  )}
+                >
+                  · agora {formatCurrency(agora)}/dia
+                </span>
+              </p>
+            );
+          })()
+        ) : (
+          <p className="mt-0.5 text-[11px] text-muted-foreground">sem planejamento</p>
+        )}
       </div>
 
       {/* Middle: progress bar with values */}
