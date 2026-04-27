@@ -623,13 +623,20 @@ function TaskRow({
 }: ColumnHandlers & { task: Task; accent?: boolean }) {
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
+  const [expanded, setExpanded] = useState(false);
   return (
-    <HoverCard openDelay={200} closeDelay={80}>
-      <HoverCardTrigger asChild>
-        <li
+    <li
           draggable
           onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
-          className="group relative flex cursor-grab items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60 active:cursor-grabbing"
+          onClick={(e) => {
+            // Don't toggle when clicking interactive children
+            const target = e.target as HTMLElement;
+            if (target.closest("button, a, [role='menuitem']")) return;
+            setExpanded((v) => !v);
+          }}
+          className={`group relative flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60 ${
+            expanded ? "bg-secondary/40" : ""
+          }`}
         >
       <button
         onClick={() => onToggle(task)}
@@ -664,10 +671,35 @@ function TaskRow({
             {task.title}
           </p>
         </div>
-        {task.description && !done && (
+        {task.description && !done && !expanded && (
           <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
             {task.description}
           </p>
+        )}
+        {expanded && (
+          <div className="mt-2 space-y-2">
+            {task.description ? (
+              <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                {task.description}
+              </p>
+            ) : (
+              <p className="text-xs italic text-muted-foreground/60">Sem descrição.</p>
+            )}
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlers.onEdit(task);
+                }}
+              >
+                <Pencil className="mr-1 h-3 w-3" />
+                Editar
+              </Button>
+            </div>
+          </div>
         )}
       </div>
       <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100">
@@ -679,10 +711,7 @@ function TaskRow({
           showProjectDot={showProjectDot}
         />
       </div>
-        </li>
-      </HoverCardTrigger>
-      <TaskHoverPreview task={task} project={project} />
-    </HoverCard>
+    </li>
   );
 }
 
