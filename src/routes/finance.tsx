@@ -24,6 +24,7 @@ import {
   fetchDailyExpenses,
   fetchMonthlyPlans,
   fetchTransactions,
+  updateCategory,
   upsertDailyExpense,
   upsertMonthlyPlan,
 } from "@/modules/finance/api";
