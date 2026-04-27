@@ -131,7 +131,6 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
   return (
     <Link
       to={to}
-      activeOptions={{ exact: to === "/" }}
       className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground data-[status=active]:text-foreground data-[status=active]:bg-secondary"
     >
       {children}
