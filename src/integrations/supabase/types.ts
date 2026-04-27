@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_variable: boolean
           name: string
           type: Database["public"]["Enums"]["financial_type"]
           updated_at: string
@@ -25,6 +26,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_variable?: boolean
           name: string
           type: Database["public"]["Enums"]["financial_type"]
           updated_at?: string
@@ -32,6 +34,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_variable?: boolean
           name?: string
           type?: Database["public"]["Enums"]["financial_type"]
           updated_at?: string

@@ -13,7 +13,7 @@ import { isValidAmount } from "./calculations";
 export async function fetchCategories(): Promise<Category[]> {
   const { data, error } = await supabase
     .from("categories")
-    .select("id, name, type")
+    .select("id, name, type, is_variable")
     .order("name");
   if (error) throw error;
   return (data ?? []) as Category[];
@@ -87,13 +87,39 @@ export async function deleteTransaction(id: string): Promise<void> {
 /* ------------------------- Categories ------------------------- */
 
 export async function createCategory(
-  input: { name: string; type: "income" | "expense" },
+  input: { name: string; type: "income" | "expense"; is_variable?: boolean },
 ): Promise<Category> {
   const name = input.name.trim();
   if (!name) throw new Error("Informe um nome para a categoria.");
   const { data, error } = await supabase
     .from("categories")
-    .insert({ name, type: input.type })
+    .insert({
+      name,
+      type: input.type,
+      // For income, is_variable é ignorado mas mantido como true por default.
+      is_variable: input.is_variable ?? true,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Category;
+}
+
+export async function updateCategory(
+  id: string,
+  patch: { name?: string; is_variable?: boolean },
+): Promise<Category> {
+  const update: { name?: string; is_variable?: boolean } = {};
+  if (patch.name !== undefined) {
+    const name = patch.name.trim();
+    if (!name) throw new Error("Nome inválido.");
+    update.name = name;
+  }
+  if (patch.is_variable !== undefined) update.is_variable = patch.is_variable;
+  const { data, error } = await supabase
+    .from("categories")
+    .update(update)
+    .eq("id", id)
     .select()
     .single();
   if (error) throw error;
