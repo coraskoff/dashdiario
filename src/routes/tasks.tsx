@@ -93,6 +93,24 @@ function TasksPage() {
 
   const buckets = useMemo(() => groupByBucket(visibleTasks), [visibleTasks]);
 
+  // "Semana" no topo = só tarefas sem data. Tarefas com data futura (>= hoje+3)
+  // que ainda caem na semana corrente vão para o rodapé "Resto da semana".
+  const restIsos = useMemo(() => restOfWeekIsos(), []);
+  const restIsoSet = useMemo(() => new Set(restIsos), [restIsos]);
+  const weekNoDate = useMemo(
+    () => buckets.week.filter((t) => !t.due_date),
+    [buckets.week],
+  );
+  const tasksByDate = useMemo(() => {
+    const map: Record<string, Task[]> = {};
+    for (const t of buckets.week) {
+      if (t.due_date && restIsoSet.has(t.due_date)) {
+        (map[t.due_date] ??= []).push(t);
+      }
+    }
+    return map;
+  }, [buckets.week, restIsoSet]);
+
   // Counts per project (pending only — that's what matters for scanning)
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: 0 };
