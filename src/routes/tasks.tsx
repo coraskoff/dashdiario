@@ -25,7 +25,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import {
   Sheet,
   SheetContent,
@@ -429,9 +428,7 @@ function WeekChip({
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
   return (
-    <HoverCard openDelay={150} closeDelay={80}>
-      <HoverCardTrigger asChild>
-        <div
+    <div
           draggable
           onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
           className={`group flex max-w-full items-center gap-2 rounded-full border border-border bg-card pl-1 pr-1 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
@@ -465,10 +462,7 @@ function WeekChip({
             onToggle={onToggle}
             showProjectDot={showProjectDot}
           />
-        </div>
-      </HoverCardTrigger>
-      <TaskHoverPreview task={task} project={project} />
-    </HoverCard>
+    </div>
   );
 }
 
@@ -629,13 +623,20 @@ function TaskRow({
 }: ColumnHandlers & { task: Task; accent?: boolean }) {
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
+  const [expanded, setExpanded] = useState(false);
   return (
-    <HoverCard openDelay={200} closeDelay={80}>
-      <HoverCardTrigger asChild>
-        <li
+    <li
           draggable
           onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
-          className="group relative flex cursor-grab items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60 active:cursor-grabbing"
+          onClick={(e) => {
+            // Don't toggle when clicking interactive children
+            const target = e.target as HTMLElement;
+            if (target.closest("button, a, [role='menuitem']")) return;
+            setExpanded((v) => !v);
+          }}
+          className={`group relative flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60 ${
+            expanded ? "bg-secondary/40" : ""
+          }`}
         >
       <button
         onClick={() => onToggle(task)}
@@ -670,10 +671,35 @@ function TaskRow({
             {task.title}
           </p>
         </div>
-        {task.description && !done && (
+        {task.description && !done && !expanded && (
           <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
             {task.description}
           </p>
+        )}
+        {expanded && (
+          <div className="mt-2 space-y-2">
+            {task.description ? (
+              <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                {task.description}
+              </p>
+            ) : (
+              <p className="text-xs italic text-muted-foreground/60">Sem descrição.</p>
+            )}
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlers.onEdit(task);
+                }}
+              >
+                <Pencil className="mr-1 h-3 w-3" />
+                Editar
+              </Button>
+            </div>
+          </div>
         )}
       </div>
       <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100">
@@ -685,10 +711,7 @@ function TaskRow({
           showProjectDot={showProjectDot}
         />
       </div>
-        </li>
-      </HoverCardTrigger>
-      <TaskHoverPreview task={task} project={project} />
-    </HoverCard>
+    </li>
   );
 }
 
@@ -737,44 +760,6 @@ function dayNumber(iso: string): number {
 }
 
 /* ---------------------- Hover preview + Actions menu ---------------------- */
-
-function TaskHoverPreview({
-  task,
-  project,
-}: {
-  task: Task;
-  project: { id: string; name: string; color: string | null } | null;
-}) {
-  return (
-    <HoverCardContent side="top" align="start" className="w-72 p-3">
-      <div className="space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-sm font-medium leading-snug">{task.title}</p>
-          {project && (
-            <span className="flex shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-              <span
-                aria-hidden
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ background: projectColor(project) }}
-              />
-              {project.name}
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-          {task.due_date ? formatFullDate(task.due_date) : "Sem data — Semana"}
-        </p>
-        {task.description ? (
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {task.description}
-          </p>
-        ) : (
-          <p className="text-xs italic text-muted-foreground/60">Sem descrição.</p>
-        )}
-      </div>
-    </HoverCardContent>
-  );
-}
 
 function TaskActionsMenu({
   task,
@@ -905,15 +890,6 @@ function toIsoLocal(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${m}-${day}`;
-}
-
-function formatFullDate(iso: string): string {
-  const d = parseIsoDate(iso);
-  return new Intl.DateTimeFormat("pt-BR", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-  }).format(d);
 }
 
 function weekdayLabel(iso: string): string {
