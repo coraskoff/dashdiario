@@ -34,6 +34,14 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+} from "@/components/ui/drawer";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -221,6 +229,7 @@ function TasksPage() {
   });
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const pendingTotal = visibleTasks.filter((t) => t.status === "pending").length;
   const completedTasks = useMemo(
     () =>
@@ -239,6 +248,7 @@ function TasksPage() {
         status: t.status === "pending" ? "completed" : "pending",
       }),
     onEdit: (t: Task) => setEditingId(t.id),
+    onOpen: (t: Task) => setDetailId(t.id),
     onDelete: (t: Task) => remove.mutate(t.id),
     onMove: (id: string, bucket: Bucket) => move.mutate({ id, bucket }),
     onSetDate: (id: string, date: string | null) => setDate.mutate({ id, date }),
@@ -254,6 +264,11 @@ function TasksPage() {
     projects,
     showProjectDot: activeProject === "all",
   };
+
+  const detailTask = useMemo(
+    () => (detailId ? tasks.find((t) => t.id === detailId) ?? null : null),
+    [detailId, tasks],
+  );
 
   return (
     <div className="space-y-10">
@@ -388,6 +403,28 @@ function TasksPage() {
           </div>
         </section>
       )}
+
+      <TaskDetailPanel
+        task={detailTask}
+        open={!!detailTask}
+        onOpenChange={(o) => !o && setDetailId(null)}
+        projectsById={projectsById}
+        projects={projects}
+        onToggle={(t) =>
+          toggle.mutate({ id: t.id, status: t.status === "pending" ? "completed" : "pending" })
+        }
+        onEdit={(t) => {
+          setDetailId(null);
+          setEditingId(t.id);
+        }}
+        onDelete={(t) => {
+          setDetailId(null);
+          remove.mutate(t.id);
+        }}
+        onMove={(id, bucket) => move.mutate({ id, bucket })}
+        onSetDate={(id, date) => setDate.mutate({ id, date })}
+        onSetProject={(id, projectId) => setProject.mutate({ id, projectId })}
+      />
     </div>
   );
 }
@@ -397,6 +434,7 @@ function TasksPage() {
 interface ColumnHandlers {
   onToggle: (t: Task) => void;
   onEdit: (t: Task) => void;
+  onOpen: (t: Task) => void;
   onDelete: (t: Task) => void;
   onMove: (id: string, bucket: Bucket) => void;
   onSetDate: (id: string, date: string | null) => void;
@@ -472,6 +510,7 @@ function WeekStrip({
 function WeekChip({
   task,
   onToggle,
+  onOpen,
   projectsById,
   showProjectDot,
   ...handlers
@@ -482,7 +521,12 @@ function WeekChip({
     <div
           draggable
           onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
-          className={`group flex max-w-full items-center gap-2 rounded-full border border-border bg-card pl-1 pr-1 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
+          onClick={(e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest("button, a, [role='menuitem']")) return;
+            onOpen(task);
+          }}
+          className={`group flex max-w-full cursor-pointer items-center gap-2 rounded-full border border-border bg-card pl-1 pr-1 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
             done ? "opacity-50" : ""
           }`}
         >
@@ -510,6 +554,7 @@ function WeekChip({
             task={task}
             projectsById={projectsById}
             {...handlers}
+            onOpen={onOpen}
             onToggle={onToggle}
             showProjectDot={showProjectDot}
           />
@@ -668,26 +713,23 @@ function TaskRow({
   task,
   accent,
   onToggle,
+  onOpen,
   projectsById,
   showProjectDot,
   ...handlers
 }: ColumnHandlers & { task: Task; accent?: boolean }) {
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
-  const [expanded, setExpanded] = useState(false);
   return (
     <li
           draggable
           onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
           onClick={(e) => {
-            // Don't toggle when clicking interactive children
             const target = e.target as HTMLElement;
             if (target.closest("button, a, [role='menuitem']")) return;
-            setExpanded((v) => !v);
+            onOpen(task);
           }}
-          className={`group relative flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60 ${
-            expanded ? "bg-secondary/40" : ""
-          }`}
+          className="group relative flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60"
         >
       <button
         onClick={() => onToggle(task)}
@@ -722,35 +764,10 @@ function TaskRow({
             {task.title}
           </p>
         </div>
-        {task.description && !done && !expanded && (
+        {task.description && !done && (
           <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
             {task.description}
           </p>
-        )}
-        {expanded && (
-          <div className="mt-2 space-y-2">
-            {task.description ? (
-              <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-                {task.description}
-              </p>
-            ) : (
-              <p className="text-xs italic text-muted-foreground/60">Sem descrição.</p>
-            )}
-            <div className="flex items-center gap-2 pt-1">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 text-xs"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlers.onEdit(task);
-                }}
-              >
-                <Pencil className="mr-1 h-3 w-3" />
-                Editar
-              </Button>
-            </div>
-          </div>
         )}
       </div>
       <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100">
@@ -758,6 +775,7 @@ function TaskRow({
           task={task}
           projectsById={projectsById}
           {...handlers}
+          onOpen={onOpen}
           onToggle={onToggle}
           showProjectDot={showProjectDot}
         />
@@ -773,6 +791,7 @@ function MiniDayCard({
   tasks,
   onAdd,
   onToggle,
+  onOpen,
   onMove,
   projectsById,
   showProjectDot,
@@ -826,7 +845,12 @@ function MiniDayCard({
                 key={t.id}
                 draggable
                 onDragStart={(e) => e.dataTransfer.setData("text/task-id", t.id)}
-                className="group flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-foreground/80 hover:bg-secondary/60"
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (target.closest("button, a, [role='menuitem']")) return;
+                  onOpen(t);
+                }}
+                className="group flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-xs text-foreground/80 hover:bg-secondary/60"
               >
                 <button
                   onClick={() => onToggle(t)}
@@ -1043,6 +1067,250 @@ function weekRangeLabel(): string {
   sunday.setDate(monday.getDate() + 6);
   const fmt = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" });
   return `Semana de ${fmt.format(monday)} – ${fmt.format(sunday)}`;
+}
+
+/* ---------------------- Task detail panel ---------------------- */
+
+interface TaskDetailPanelProps {
+  task: Task | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  projectsById: Record<string, { id: string; name: string; color: string | null }>;
+  projects: Project[];
+  onToggle: (t: Task) => void;
+  onEdit: (t: Task) => void;
+  onDelete: (t: Task) => void;
+  onMove: (id: string, bucket: Bucket) => void;
+  onSetDate: (id: string, date: string | null) => void;
+  onSetProject: (id: string, projectId: string | null) => void;
+}
+
+function TaskDetailPanel(props: TaskDetailPanelProps) {
+  const isMobile = useIsMobile();
+  const { task, open, onOpenChange } = props;
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent className="max-h-[88vh]">
+          {task && (
+            <>
+              <DrawerHeader className="text-left">
+                <DrawerTitle className="sr-only">{task.title}</DrawerTitle>
+                <DrawerDescription className="sr-only">Detalhes da tarefa</DrawerDescription>
+              </DrawerHeader>
+              <div className="overflow-y-auto px-4 pb-8">
+                <TaskDetailBody {...props} task={task} />
+              </div>
+            </>
+          )}
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full p-0 sm:max-w-md">
+        {task && (
+          <>
+            <SheetHeader className="sr-only">
+              <SheetTitle>{task.title}</SheetTitle>
+              <SheetDescription>Detalhes da tarefa</SheetDescription>
+            </SheetHeader>
+            <ScrollArea className="h-full">
+              <div className="px-6 py-8">
+                <TaskDetailBody {...props} task={task} />
+              </div>
+            </ScrollArea>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function TaskDetailBody({
+  task,
+  projectsById,
+  projects,
+  onToggle,
+  onEdit,
+  onDelete,
+  onMove,
+  onSetDate,
+  onSetProject,
+}: TaskDetailPanelProps & { task: Task }) {
+  const done = task.status === "completed";
+  const project = task.project_id ? projectsById[task.project_id] : null;
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+
+  const dueLabel = task.due_date
+    ? new Intl.DateTimeFormat("pt-BR", {
+        weekday: "long",
+        day: "2-digit",
+        month: "long",
+      }).format(parseIsoDate(task.due_date))
+    : "Sem data";
+
+  return (
+    <div className="space-y-6">
+      {/* Status + título */}
+      <div className="flex items-start gap-3">
+        <button
+          onClick={() => onToggle(task)}
+          aria-label={done ? "Reabrir" : "Concluir"}
+          className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors ${
+            done
+              ? "border-foreground bg-foreground text-background"
+              : "border-border hover:border-foreground"
+          }`}
+        >
+          {done && <Check className="h-3 w-3" strokeWidth={3} />}
+        </button>
+        <h2
+          className={`text-xl font-semibold leading-tight tracking-tight ${
+            done ? "text-muted-foreground line-through" : "text-foreground"
+          }`}
+        >
+          {task.title}
+        </h2>
+      </div>
+
+      {/* Metadados */}
+      <dl className="grid grid-cols-[88px_1fr] gap-y-3 text-sm">
+        <dt className="text-muted-foreground">Quando</dt>
+        <dd>
+          <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <button className="inline-flex items-center gap-2 rounded-md border border-transparent px-2 py-1 -mx-2 text-foreground hover:border-border hover:bg-secondary/60">
+                <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="capitalize">{dueLabel}</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-auto p-0">
+              <Calendar
+                mode="single"
+                selected={task.due_date ? parseIsoDate(task.due_date) : undefined}
+                onSelect={(d) => {
+                  if (d) onSetDate(task.id, toIsoLocal(d));
+                  setDatePickerOpen(false);
+                }}
+                initialFocus
+                className={cn("p-3 pointer-events-auto")}
+              />
+              {task.due_date && (
+                <div className="border-t p-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start text-xs"
+                    onClick={() => {
+                      onSetDate(task.id, null);
+                      setDatePickerOpen(false);
+                    }}
+                  >
+                    Remover data
+                  </Button>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+        </dd>
+
+        <dt className="text-muted-foreground">Projeto</dt>
+        <dd>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="inline-flex items-center gap-2 rounded-md border border-transparent px-2 py-1 -mx-2 text-foreground hover:border-border hover:bg-secondary/60">
+                {project ? (
+                  <>
+                    <span
+                      aria-hidden
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ background: projectColor(project) }}
+                    />
+                    <span>{project.name}</span>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">Sem projeto</span>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-72 w-56 overflow-y-auto">
+              <DropdownMenuItem onSelect={() => onSetProject(task.id, null)}>
+                <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                Sem projeto
+                {!task.project_id && <Check className="ml-auto h-3.5 w-3.5" />}
+              </DropdownMenuItem>
+              {projects.length > 0 && <DropdownMenuSeparator />}
+              {projects.map((p) => (
+                <DropdownMenuItem key={p.id} onSelect={() => onSetProject(task.id, p.id)}>
+                  <span
+                    aria-hidden
+                    className="mr-2 inline-block h-1.5 w-1.5 rounded-full"
+                    style={{ background: projectColor(p) }}
+                  />
+                  {p.name}
+                  {task.project_id === p.id && <Check className="ml-auto h-3.5 w-3.5" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </dd>
+      </dl>
+
+      {/* Descrição */}
+      <div>
+        <h3 className="pb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          Descrição
+        </h3>
+        {task.description ? (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+            {task.description}
+          </p>
+        ) : (
+          <p className="text-sm italic text-muted-foreground/70">Sem descrição.</p>
+        )}
+      </div>
+
+      {/* Ações */}
+      <div className="flex items-center justify-between gap-2 border-t pt-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => onEdit(task)}>
+            <Pencil className="mr-1.5 h-3.5 w-3.5" />
+            Editar
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost">
+                <ArrowRight className="mr-1.5 h-3.5 w-3.5" />
+                Mover
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={() => onMove(task.id, "week")}>
+                Sem data
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "today")}>Hoje</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "tomorrow")}>
+                Amanhã
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onMove(task.id, "later")}>Depois</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => onDelete(task)}
+          className="text-destructive hover:text-destructive"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 /* ---------------------- Completed archive sheet ---------------------- */
