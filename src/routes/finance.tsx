@@ -24,7 +24,6 @@ import {
   fetchDailyExpenses,
   fetchMonthlyPlans,
   fetchTransactions,
-  updateCategory,
   upsertDailyExpense,
   upsertMonthlyPlan,
 } from "@/modules/finance/api";
@@ -50,13 +49,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
