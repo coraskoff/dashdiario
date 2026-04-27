@@ -54,6 +54,7 @@ import {
 } from "@/modules/projects/api";
 import type { Project } from "@/modules/projects/types";
 import { ProjectTabs, type ActiveProject } from "@/components/ProjectTabs";
+import { CompletedSheet } from "@/components/CompletedSheet";
 
 export const Route = createFileRoute("/tasks")({
   head: () => ({
