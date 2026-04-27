@@ -147,7 +147,10 @@ export async function deleteMonthlyPlan(id: string): Promise<void> {
 export async function fetchDailyExpenses(month?: string): Promise<DailyExpense[]> {
   let q = supabase.from("daily_expenses").select("*").order("date", { ascending: false });
   if (month) {
-    q = q.gte("date", `${month}-01`).lte("date", `${month}-31`);
+    const [y, m] = month.split("-").map(Number);
+    const next = new Date(y, m, 1); // first day of next month
+    const nextMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-01`;
+    q = q.gte("date", `${month}-01`).lt("date", nextMonth);
   }
   const { data, error } = await q;
   if (error) throw error;
