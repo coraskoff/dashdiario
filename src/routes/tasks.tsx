@@ -766,6 +766,90 @@ function TaskRow({
   );
 }
 
+/* ---------------------- Mini day card (rest of the week) ---------------------- */
+
+function MiniDayCard({
+  iso,
+  tasks,
+  onAdd,
+  onToggle,
+  onMove,
+  projectsById,
+  showProjectDot,
+  ...handlers
+}: ColumnHandlers & {
+  iso: string;
+  tasks: Task[];
+  onAdd: (title: string) => void;
+}) {
+  const [drag, setDrag] = useState(false);
+  const pending = tasks.filter((t) => t.status === "pending");
+  const num = dayNumber(iso);
+  const wd = weekdayLabel(iso);
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDrag(true);
+      }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDrag(false);
+        const id = e.dataTransfer.getData("text/task-id");
+        if (id) handlers.onSetDate(id, iso);
+      }}
+      className={`w-[60vw] shrink-0 snap-start rounded-xl border bg-card/60 px-3 py-3 transition-colors md:w-auto ${
+        drag ? "border-foreground/40 bg-secondary/60" : "border-border/60"
+      }`}
+    >
+      <div className="flex items-baseline gap-2">
+        <span className="text-xl font-medium tabular-nums leading-none text-foreground/80">
+          {num}
+        </span>
+        <span className="text-[11px] text-muted-foreground">{wd}</span>
+        {pending.length > 0 && (
+          <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
+            {pending.length}
+          </span>
+        )}
+      </div>
+      <div className="mt-2">
+        <QuickAdd placeholder="Adicionar…" onAdd={onAdd} />
+      </div>
+      {pending.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {pending.map((t) => {
+            const project = t.project_id ? projectsById[t.project_id] : null;
+            return (
+              <li
+                key={t.id}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData("text/task-id", t.id)}
+                className="group flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-foreground/80 hover:bg-secondary/60"
+              >
+                <button
+                  onClick={() => onToggle(t)}
+                  aria-label="Concluir"
+                  className="h-3 w-3 shrink-0 rounded-full border border-border hover:border-foreground"
+                />
+                {showProjectDot && project && (
+                  <span
+                    aria-hidden
+                    className="h-1 w-1 shrink-0 rounded-full"
+                    style={{ background: projectColor(project) }}
+                  />
+                )}
+                <span className="truncate">{t.title}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function EditRow({
   task,
   onSave,
