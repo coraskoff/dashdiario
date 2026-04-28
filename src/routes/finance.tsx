@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Pencil } from "lucide-react";
 
 import {
-  deleteDay,
   fetchAllDays,
   fetchAllMonths,
   upsertDay,
