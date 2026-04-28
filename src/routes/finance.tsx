@@ -965,6 +965,3 @@ function ProjectionCard({
     </div>
   );
 }
-
-// re-import for type usage in TransactionsPanel signature
-import { upsertTransaction } from "@/modules/finance/api";
