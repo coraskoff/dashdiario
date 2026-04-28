@@ -1,9 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
 import type {
   FinanceDay,
-  FinanceDayInput,
+  FinanceDayDiarioInput,
   FinanceMonth,
   FinanceMonthInput,
+  FinanceTransaction,
+  FinanceTransactionInput,
 } from "./types";
 
 export async function fetchAllMonths(): Promise<FinanceMonth[]> {
@@ -18,10 +20,23 @@ export async function fetchAllMonths(): Promise<FinanceMonth[]> {
 export async function fetchAllDays(): Promise<FinanceDay[]> {
   const { data, error } = await supabase
     .from("finance_days")
-    .select("id, date, entrada, saida, diario_override, entrada_label, saida_label")
+    .select("id, date, diario_override")
     .order("date");
   if (error) throw error;
   return (data ?? []) as FinanceDay[];
+}
+
+export async function fetchAllTransactions(): Promise<FinanceTransaction[]> {
+  const { data, error } = await supabase
+    .from("finance_transactions")
+    .select("id, date, kind, amount, label")
+    .order("date")
+    .order("created_at");
+  if (error) throw error;
+  return (data ?? []).map((d) => ({
+    ...d,
+    amount: Number(d.amount),
+  })) as FinanceTransaction[];
 }
 
 export async function upsertMonth(input: FinanceMonthInput): Promise<FinanceMonth> {
@@ -40,39 +55,56 @@ export async function upsertMonth(input: FinanceMonthInput): Promise<FinanceMont
   return data as FinanceMonth;
 }
 
-export async function upsertDay(input: FinanceDayInput): Promise<FinanceDay> {
-  if (!input.date) throw new Error("Data inválida.");
-  // Read existing first so partial updates preserve unset fields.
-  const { data: existing } = await supabase
-    .from("finance_days")
-    .select("id, date, entrada, saida, diario_override, entrada_label, saida_label")
-    .eq("date", input.date)
-    .maybeSingle();
-
-  const merged = {
-    date: input.date,
-    entrada: input.entrada ?? existing?.entrada ?? 0,
-    saida: input.saida ?? existing?.saida ?? 0,
-    diario_override:
-      input.diario_override !== undefined
-        ? input.diario_override
-        : existing?.diario_override ?? null,
-    entrada_label:
-      input.entrada_label !== undefined ? input.entrada_label : existing?.entrada_label ?? null,
-    saida_label:
-      input.saida_label !== undefined ? input.saida_label : existing?.saida_label ?? null,
-  };
-
+export async function upsertDayDiario(input: FinanceDayDiarioInput): Promise<FinanceDay> {
   const { data, error } = await supabase
     .from("finance_days")
-    .upsert(merged, { onConflict: "date" })
-    .select("id, date, entrada, saida, diario_override, entrada_label, saida_label")
+    .upsert(
+      { date: input.date, diario_override: input.diario_override, entrada: 0, saida: 0 },
+      { onConflict: "date" },
+    )
+    .select("id, date, diario_override")
     .single();
   if (error) throw error;
   return data as FinanceDay;
 }
 
-export async function deleteDay(date: string): Promise<void> {
-  const { error } = await supabase.from("finance_days").delete().eq("date", date);
+export async function upsertTransaction(
+  input: FinanceTransactionInput,
+): Promise<FinanceTransaction> {
+  if (!input.date) throw new Error("Data inválida.");
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    throw new Error("Valor deve ser maior que zero.");
+  }
+  if (input.id) {
+    const { data, error } = await supabase
+      .from("finance_transactions")
+      .update({
+        date: input.date,
+        kind: input.kind,
+        amount: input.amount,
+        label: input.label ?? null,
+      })
+      .eq("id", input.id)
+      .select("id, date, kind, amount, label")
+      .single();
+    if (error) throw error;
+    return { ...data, amount: Number(data.amount) } as FinanceTransaction;
+  }
+  const { data, error } = await supabase
+    .from("finance_transactions")
+    .insert({
+      date: input.date,
+      kind: input.kind,
+      amount: input.amount,
+      label: input.label ?? null,
+    })
+    .select("id, date, kind, amount, label")
+    .single();
+  if (error) throw error;
+  return { ...data, amount: Number(data.amount) } as FinanceTransaction;
+}
+
+export async function deleteTransaction(id: string): Promise<void> {
+  const { error } = await supabase.from("finance_transactions").delete().eq("id", id);
   if (error) throw error;
 }
