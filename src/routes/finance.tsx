@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Pencil, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Pencil } from "lucide-react";
 
 import {
   deleteDay,
@@ -11,7 +11,7 @@ import {
   upsertDay,
   upsertMonth,
 } from "@/modules/finance/api";
-import type { FinanceDay, FinanceMonth } from "@/modules/finance/types";
+import type { FinanceMonth } from "@/modules/finance/types";
 import {
   buildDayRows,
   buildYearProjection,
@@ -28,9 +28,6 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/finance")({
@@ -50,21 +47,10 @@ function formatInput(value: number): string {
   return value.toFixed(2).replace(".", ",");
 }
 
-function dayLabel(date: string): string {
-  const [y, m, d] = date.split("-").map(Number);
-  return new Intl.DateTimeFormat("pt-BR", {
-    weekday: "short",
-    day: "2-digit",
-    month: "long",
-  }).format(new Date(y, m - 1, d));
-}
-
 /* ---------- page ---------- */
 function FinancePage() {
   const qc = useQueryClient();
   const [month, setMonth] = useState<string>(currentMonth());
-  const [editingDay, setEditingDay] = useState<string | null>(null);
-  const isMobile = useIsMobile();
 
   const monthsQuery = useQuery({ queryKey: ["finance", "months"], queryFn: fetchAllMonths });
   const daysQuery = useQuery({ queryKey: ["finance", "days"], queryFn: fetchAllDays });
@@ -113,8 +99,6 @@ function FinancePage() {
     return buildYearProjection(start, 0, months, allDays);
   }, [month, months, allDays]);
 
-  const editingRow = editingDay ? rows.find((r) => r.date === editingDay) ?? null : null;
-
   const updateMonthMutation = useMutation({
     mutationFn: upsertMonth,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "months"] }),
@@ -127,15 +111,7 @@ function FinancePage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const deleteDayMutation = useMutation({
-    mutationFn: deleteDay,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["finance", "days"] });
-      setEditingDay(null);
-      toast.success("Dia limpo");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const suggested = suggestedDaily(monthConfig?.variable_amount ?? 0, month);
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 md:px-8">
@@ -158,27 +134,17 @@ function FinancePage() {
 
       <DayTable
         rows={rows}
-        onSelectDay={(date) => setEditingDay(date)}
+        suggestedDaily={suggested}
+        onUpdate={(date, field, value) => {
+          const payload: Parameters<typeof upsertDay>[0] = { date };
+          if (field === "entrada") payload.entrada = value ?? 0;
+          if (field === "saida") payload.saida = value ?? 0;
+          if (field === "diario") payload.diario_override = value;
+          upsertDayMutation.mutate(payload);
+        }}
       />
 
       <ProjectionCard projection={projection} highlightMonth={month} />
-
-      <DayEditor
-        open={!!editingRow}
-        isMobile={isMobile}
-        row={editingRow}
-        suggestedDaily={suggestedDaily(monthConfig?.variable_amount ?? 0, month)}
-        onClose={() => setEditingDay(null)}
-        onSave={(input) => {
-          upsertDayMutation.mutate(input, {
-            onSuccess: () => {
-              setEditingDay(null);
-              toast.success("Dia atualizado");
-            },
-          });
-        }}
-        onClear={(date) => deleteDayMutation.mutate(date)}
-      />
     </div>
   );
 }
