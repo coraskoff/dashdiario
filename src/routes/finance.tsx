@@ -10,7 +10,6 @@ import {
   Pencil,
   Plus,
   Trash2,
-  X,
 } from "lucide-react";
 
 import {
