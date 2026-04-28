@@ -1,4 +1,4 @@
-import type { FinanceDay, FinanceMonth } from "./types";
+import type { FinanceDay, FinanceMonth, FinanceTransaction } from "./types";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -24,6 +24,17 @@ const monthLabelFormatter = new Intl.DateTimeFormat("pt-BR", {
 export function formatMonthLabel(month: string): string {
   const [y, m] = month.split("-").map(Number);
   return monthLabelFormatter.format(new Date(y, m - 1, 1));
+}
+
+const dayLabelFormatter = new Intl.DateTimeFormat("pt-BR", {
+  weekday: "short",
+  day: "2-digit",
+  month: "short",
+});
+
+export function formatDayLabel(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return dayLabelFormatter.format(new Date(y, m - 1, d));
 }
 
 export function currentMonth(): string {
@@ -53,11 +64,6 @@ export function shiftMonth(month: string, delta: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export function monthOf(iso: string): string {
-  return iso.slice(0, 7);
-}
-
-/** Suggested daily = variable / days in month */
 export function suggestedDaily(variable: number, month: string): number {
   return variable / daysInMonth(month);
 }
@@ -65,51 +71,59 @@ export function suggestedDaily(variable: number, month: string): number {
 export interface DayRow {
   date: string;
   dayNumber: number;
+  weekday: number; // 0..6
   entrada: number;
   saida: number;
   diario: number;
   saldo: number;
-  hasData: boolean;
+  prevSaldo: number;
+  hasOverride: boolean;
   isFuture: boolean;
-  /** True when no FinanceDay record exists yet (saldo is projected). */
-  isProjected: boolean;
+  isToday: boolean;
+  transactions: FinanceTransaction[];
 }
 
-/**
- * Build the day rows for a month, given an opening balance carried in.
- * - diario per day = override if set, else month's suggested daily.
- * - saldo[N] = saldo[N-1] + entrada - saida - diario.
- */
 export function buildDayRows(
   month: string,
   openingBalance: number,
   monthConfig: FinanceMonth | undefined,
   days: FinanceDay[],
+  transactions: FinanceTransaction[],
   referenceDate: string = todayIso(),
 ): { rows: DayRow[]; closingBalance: number } {
   const dates = datesOfMonth(month);
   const variable = monthConfig?.variable_amount ?? 0;
   const suggested = suggestedDaily(variable, month);
   const dayMap = new Map(days.map((d) => [d.date, d]));
+  const txByDate = new Map<string, FinanceTransaction[]>();
+  for (const t of transactions) {
+    if (!txByDate.has(t.date)) txByDate.set(t.date, []);
+    txByDate.get(t.date)!.push(t);
+  }
 
   let saldo = openingBalance;
   const rows: DayRow[] = dates.map((date) => {
     const d = dayMap.get(date);
-    const entrada = d ? Number(d.entrada) : 0;
-    const saida = d ? Number(d.saida) : 0;
+    const txs = txByDate.get(date) ?? [];
+    const entrada = txs.filter((t) => t.kind === "entrada").reduce((s, t) => s + t.amount, 0);
+    const saida = txs.filter((t) => t.kind === "saida").reduce((s, t) => s + t.amount, 0);
     const diario = d?.diario_override != null ? Number(d.diario_override) : suggested;
+    const prevSaldo = saldo;
     saldo = saldo + entrada - saida - diario;
-    const isFuture = date > referenceDate;
+    const [y, m, dd] = date.split("-").map(Number);
     return {
       date,
-      dayNumber: Number(date.slice(8, 10)),
+      dayNumber: dd,
+      weekday: new Date(y, m - 1, dd).getDay(),
       entrada,
       saida,
       diario,
       saldo,
-      hasData: !!d && (entrada > 0 || saida > 0 || d.diario_override != null),
-      isFuture,
-      isProjected: !d,
+      prevSaldo,
+      hasOverride: d?.diario_override != null,
+      isFuture: date > referenceDate,
+      isToday: date === referenceDate,
+      transactions: txs,
     };
   });
 
@@ -120,7 +134,7 @@ export interface MonthSummary {
   totalEntrada: number;
   totalSaida: number;
   totalDiario: number;
-  performance: number; // entrada - saida - diario
+  performance: number;
   closingBalance: number;
 }
 
@@ -142,10 +156,6 @@ export function summarizeMonth(rows: DayRow[], openingBalance: number): MonthSum
   };
 }
 
-/**
- * Build projection until December of currentMonth's year.
- * Returns one entry per month with closing balance.
- */
 export interface MonthProjection {
   month: string;
   label: string;
@@ -158,6 +168,7 @@ export function buildYearProjection(
   startOpeningBalance: number,
   monthsConfig: FinanceMonth[],
   allDays: FinanceDay[],
+  allTransactions: FinanceTransaction[],
 ): MonthProjection[] {
   const [year] = startMonth.split("-").map(Number);
   const result: MonthProjection[] = [];
@@ -168,7 +179,8 @@ export function buildYearProjection(
     if (cy > year) break;
     const cfg = monthsConfig.find((c) => c.month === cursor);
     const monthDays = allDays.filter((d) => d.date.startsWith(cursor));
-    const { closingBalance } = buildDayRows(cursor, opening, cfg, monthDays);
+    const monthTx = allTransactions.filter((t) => t.date.startsWith(cursor));
+    const { closingBalance } = buildDayRows(cursor, opening, cfg, monthDays, monthTx);
     result.push({
       month: cursor,
       label: formatMonthLabel(cursor),
@@ -180,8 +192,4 @@ export function buildYearProjection(
     cursor = shiftMonth(cursor, 1);
   }
   return result;
-}
-
-export function isValidAmount(value: number): boolean {
-  return Number.isFinite(value) && value >= 0;
 }

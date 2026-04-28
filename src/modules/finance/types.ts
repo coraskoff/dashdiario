@@ -7,11 +7,15 @@ export interface FinanceMonth {
 export interface FinanceDay {
   id: string;
   date: string; // YYYY-MM-DD
-  entrada: number;
-  saida: number;
   diario_override: number | null;
-  entrada_label: string | null;
-  saida_label: string | null;
+}
+
+export interface FinanceTransaction {
+  id: string;
+  date: string; // YYYY-MM-DD
+  kind: "entrada" | "saida";
+  amount: number;
+  label: string | null;
 }
 
 export interface FinanceMonthInput {
@@ -19,11 +23,15 @@ export interface FinanceMonthInput {
   variable_amount: number;
 }
 
-export interface FinanceDayInput {
+export interface FinanceDayDiarioInput {
   date: string;
-  entrada?: number;
-  saida?: number;
-  diario_override?: number | null;
-  entrada_label?: string | null;
-  saida_label?: string | null;
+  diario_override: number | null;
+}
+
+export interface FinanceTransactionInput {
+  id?: string;
+  date: string;
+  kind: "entrada" | "saida";
+  amount: number;
+  label?: string | null;
 }

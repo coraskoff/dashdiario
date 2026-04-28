@@ -2,21 +2,34 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Pencil } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import {
+  deleteTransaction,
   fetchAllDays,
   fetchAllMonths,
-  upsertDay,
+  fetchAllTransactions,
+  upsertDayDiario,
   upsertMonth,
+  upsertTransaction,
 } from "@/modules/finance/api";
-import type { FinanceMonth } from "@/modules/finance/types";
+import type { FinanceMonth, FinanceTransaction } from "@/modules/finance/types";
 import {
   buildDayRows,
   buildYearProjection,
   currentMonth,
   formatCurrency,
   formatCurrencyCompact,
+  formatDayLabel,
   formatMonthLabel,
   shiftMonth,
   suggestedDaily,
@@ -27,6 +40,14 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/finance")({
@@ -46,57 +67,66 @@ function formatInput(value: number): string {
   return value.toFixed(2).replace(".", ",");
 }
 
+type PanelKind = "entrada" | "saida" | null;
+
 /* ---------- page ---------- */
 function FinancePage() {
   const qc = useQueryClient();
   const [month, setMonth] = useState<string>(currentMonth());
+  const [panel, setPanel] = useState<PanelKind>(null);
 
   const monthsQuery = useQuery({ queryKey: ["finance", "months"], queryFn: fetchAllMonths });
   const daysQuery = useQuery({ queryKey: ["finance", "days"], queryFn: fetchAllDays });
+  const txQuery = useQuery({
+    queryKey: ["finance", "transactions"],
+    queryFn: fetchAllTransactions,
+  });
 
   const months = monthsQuery.data ?? [];
   const allDays = daysQuery.data ?? [];
+  const allTx = txQuery.data ?? [];
 
-  // Opening balance for selected month: closing of all months before it.
   const openingBalance = useMemo(() => {
     const earlier = months
       .map((c) => c.month)
       .concat(allDays.map((d) => d.date.slice(0, 7)))
+      .concat(allTx.map((t) => t.date.slice(0, 7)))
       .filter((m) => m < month);
-    const earliest = earlier.length ? earlier.sort()[0] : month;
-    if (earliest >= month) return 0;
+    if (earlier.length === 0) return 0;
+    const earliest = earlier.sort()[0];
     let opening = 0;
     let cursor = earliest;
     while (cursor < month) {
       const cfg = months.find((c) => c.month === cursor);
       const monthDays = allDays.filter((d) => d.date.startsWith(cursor));
-      const { closingBalance } = buildDayRows(cursor, opening, cfg, monthDays);
+      const monthTx = allTx.filter((t) => t.date.startsWith(cursor));
+      const { closingBalance } = buildDayRows(cursor, opening, cfg, monthDays, monthTx);
       opening = closingBalance;
       cursor = shiftMonth(cursor, 1);
     }
     return opening;
-  }, [months, allDays, month]);
+  }, [months, allDays, allTx, month]);
 
   const monthConfig = months.find((c) => c.month === month);
   const monthDays = useMemo(
     () => allDays.filter((d) => d.date.startsWith(month)),
     [allDays, month],
   );
+  const monthTx = useMemo(
+    () => allTx.filter((t) => t.date.startsWith(month)),
+    [allTx, month],
+  );
 
   const { rows } = useMemo(
-    () => buildDayRows(month, openingBalance, monthConfig, monthDays),
-    [month, openingBalance, monthConfig, monthDays],
+    () => buildDayRows(month, openingBalance, monthConfig, monthDays, monthTx),
+    [month, openingBalance, monthConfig, monthDays, monthTx],
   );
   const summary = useMemo(() => summarizeMonth(rows, openingBalance), [rows, openingBalance]);
 
-  // Year projection (only meaningful for current/future months — but always show full year)
   const projection = useMemo(() => {
-    // Anchor projection at the earliest of (current real month, viewed month) so the first
-    // months align with reality. We start from January of the viewed year for a clean line.
     const [y] = month.split("-");
-    const start = `${y}-01`;
-    return buildYearProjection(start, 0, months, allDays);
-  }, [month, months, allDays]);
+    return buildYearProjection(`${y}-01`, 0, months, allDays, allTx);
+  }, [month, months, allDays, allTx]);
 
   const updateMonthMutation = useMutation({
     mutationFn: upsertMonth,
@@ -104,9 +134,21 @@ function FinancePage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const upsertDayMutation = useMutation({
-    mutationFn: upsertDay,
+  const updateDiarioMutation = useMutation({
+    mutationFn: upsertDayDiario,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "days"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const upsertTxMutation = useMutation({
+    mutationFn: upsertTransaction,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "transactions"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteTxMutation = useMutation({
+    mutationFn: deleteTransaction,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "transactions"] }),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -129,21 +171,32 @@ function FinancePage() {
         }
       />
 
-      <SummaryCard summary={summary} openingBalance={openingBalance} />
+      <SummaryCard
+        summary={summary}
+        openingBalance={openingBalance}
+        onOpenEntradas={() => setPanel("entrada")}
+        onOpenSaidas={() => setPanel("saida")}
+      />
 
-      <DayTable
+      <Pulse
         rows={rows}
         suggestedDaily={suggested}
-        onUpdate={(date, field, value) => {
-          const payload: Parameters<typeof upsertDay>[0] = { date };
-          if (field === "entrada") payload.entrada = value ?? 0;
-          if (field === "saida") payload.saida = value ?? 0;
-          if (field === "diario") payload.diario_override = value;
-          upsertDayMutation.mutate(payload);
-        }}
+        onUpdateDiario={(date, value) =>
+          updateDiarioMutation.mutate({ date, diario_override: value })
+        }
+        onOpenKind={setPanel}
       />
 
       <ProjectionCard projection={projection} highlightMonth={month} />
+
+      <TransactionsPanel
+        kind={panel}
+        month={month}
+        transactions={monthTx}
+        onClose={() => setPanel(null)}
+        onSave={(input) => upsertTxMutation.mutate(input)}
+        onDelete={(id) => deleteTxMutation.mutate(id)}
+      />
     </div>
   );
 }
@@ -251,26 +304,39 @@ function MonthConfigCard({
         </div>
       </div>
       <p className="mt-3 text-xs text-muted-foreground">
-        Sugestão automática dividindo a variável pelos dias do mês. Você pode sobrescrever em
-        qualquer dia da tabela.
+        Sugestão automática dividindo a variável pelos dias do mês.
       </p>
     </div>
   );
 }
 
-/* ---------- summary ---------- */
+/* ---------- summary (clicável) ---------- */
 function SummaryCard({
   summary,
   openingBalance,
+  onOpenEntradas,
+  onOpenSaidas,
 }: {
   summary: ReturnType<typeof summarizeMonth>;
   openingBalance: number;
+  onOpenEntradas: () => void;
+  onOpenSaidas: () => void;
 }) {
   return (
     <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-5">
       <Stat label="Saldo inicial" value={openingBalance} />
-      <Stat label="Entradas" value={summary.totalEntrada} tone="positive" />
-      <Stat label="Saídas" value={summary.totalSaida} tone="negative" />
+      <StatButton
+        label="Entradas"
+        value={summary.totalEntrada}
+        tone="positive"
+        onClick={onOpenEntradas}
+      />
+      <StatButton
+        label="Saídas"
+        value={summary.totalSaida}
+        tone="negative"
+        onClick={onOpenSaidas}
+      />
       <Stat label="Diário" value={summary.totalDiario} tone="negative" />
       <Stat
         label="Performance"
@@ -311,178 +377,523 @@ function Stat({
   );
 }
 
-/* ---------- day table ---------- */
-type EditableField = "entrada" | "saida" | "diario";
+function StatButton({
+  label,
+  value,
+  tone,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  tone: "positive" | "negative";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group bg-card p-4 text-left transition-colors hover:bg-muted/40 focus:bg-muted/40 focus:outline-none"
+    >
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+        <Plus className="h-3 w-3 text-muted-foreground/50 transition-colors group-hover:text-primary" />
+      </div>
+      <p
+        className={cn(
+          "mt-1 text-base font-semibold tracking-tight",
+          tone === "positive" && value > 0 && "text-emerald-600 dark:text-emerald-400",
+          tone === "negative" && value > 0 && "text-rose-600 dark:text-rose-400",
+        )}
+      >
+        {formatCurrency(value)}
+      </p>
+    </button>
+  );
+}
 
-function DayTable({
+/* ---------- Pulse: o trilho diário ---------- */
+function Pulse({
   rows,
   suggestedDaily,
-  onUpdate,
+  onUpdateDiario,
+  onOpenKind,
 }: {
   rows: DayRow[];
   suggestedDaily: number;
-  onUpdate: (date: string, field: EditableField, value: number | null) => void;
+  onUpdateDiario: (date: string, value: number | null) => void;
+  onOpenKind: (k: PanelKind) => void;
 }) {
-  const today = todayIso();
-  const [editing, setEditing] = useState<{ date: string; field: EditableField } | null>(null);
+  // Sparkline range
+  const balances = rows.map((r) => r.saldo);
+  const min = Math.min(0, ...balances);
+  const max = Math.max(0, ...balances);
+  const range = max - min || 1;
+  const todayRef = useRef<HTMLLIElement>(null);
+
+  useEffect(() => {
+    if (todayRef.current) {
+      todayRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, []);
+
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
-      <div className="grid grid-cols-[44px_1fr_1fr_1fr_1.2fr] border-b bg-muted/40 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        <div>Dia</div>
-        <div className="text-right">Entrada</div>
-        <div className="text-right">Saída</div>
-        <div className="text-right">Diário</div>
-        <div className="text-right">Saldo</div>
+    <section className="overflow-hidden rounded-xl border bg-card">
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Pulso diário</p>
+          <h2 className="text-sm font-semibold">Saldo correndo</h2>
+        </div>
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            entrada
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+            saída
+          </span>
+        </div>
       </div>
-      <ul className="divide-y">
-        {rows.map((r) => {
-          const isToday = r.date === today;
+
+      <ul className="relative">
+        {rows.map((r, i) => {
+          const sparkPct = ((r.saldo - min) / range) * 100;
           const negative = r.saldo < 0;
-          const isEditing = (f: EditableField) =>
-            editing?.date === r.date && editing.field === f;
+          const hasActivity = r.transactions.length > 0;
+          const isLast = i === rows.length - 1;
           return (
             <li
               key={r.date}
+              ref={r.isToday ? todayRef : undefined}
               className={cn(
-                "grid grid-cols-[44px_1fr_1fr_1fr_1.2fr] items-center px-3 py-1.5 text-sm",
-                isToday && "bg-primary/5",
+                "relative grid grid-cols-[56px_1fr] gap-3 px-4 py-2.5 transition-colors",
+                r.isToday && "bg-primary/[0.04]",
+                r.isFuture && "opacity-60",
+                !isLast && "border-b border-border/40",
               )}
             >
-              <div
-                className={cn(
-                  "text-muted-foreground tabular-nums",
-                  isToday && "font-semibold text-primary",
-                )}
-              >
-                {String(r.dayNumber).padStart(2, "0")}
+              {/* Left rail: day number + connector */}
+              <div className="relative flex flex-col items-center">
+                {/* Vertical connector line */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute left-1/2 top-0 h-full w-px -translate-x-1/2",
+                    "bg-border/60",
+                  )}
+                />
+                {/* Dot */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    "relative z-10 mt-1.5 h-2 w-2 rounded-full ring-4 ring-card",
+                    r.isToday
+                      ? "bg-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.2)]"
+                      : negative
+                        ? "bg-rose-500"
+                        : hasActivity
+                          ? "bg-foreground/60"
+                          : "bg-border",
+                  )}
+                />
+                {/* Day number */}
+                <div
+                  className={cn(
+                    "relative z-10 mt-1 flex flex-col items-center",
+                    r.isToday && "font-semibold text-primary",
+                  )}
+                >
+                  <span className="text-xs font-semibold tabular-nums">
+                    {String(r.dayNumber).padStart(2, "0")}
+                  </span>
+                  <span className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                    {["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][r.weekday]}
+                  </span>
+                </div>
               </div>
-              <EditableCell
-                editing={isEditing("entrada")}
-                onStart={() => setEditing({ date: r.date, field: "entrada" })}
-                onCommit={(v) => {
-                  setEditing(null);
-                  if (v !== r.entrada) onUpdate(r.date, "entrada", v);
-                }}
-                onCancel={() => setEditing(null)}
-                initial={r.entrada}
-                display={r.entrada > 0 ? formatCurrencyCompact(r.entrada) : "—"}
-                tone={r.entrada > 0 ? "positive" : "muted"}
-              />
-              <EditableCell
-                editing={isEditing("saida")}
-                onStart={() => setEditing({ date: r.date, field: "saida" })}
-                onCommit={(v) => {
-                  setEditing(null);
-                  if (v !== r.saida) onUpdate(r.date, "saida", v);
-                }}
-                onCancel={() => setEditing(null)}
-                initial={r.saida}
-                display={r.saida > 0 ? formatCurrencyCompact(r.saida) : "—"}
-                tone={r.saida > 0 ? "negative" : "muted"}
-              />
-              <EditableCell
-                editing={isEditing("diario")}
-                onStart={() => setEditing({ date: r.date, field: "diario" })}
-                onCommit={(v) => {
-                  setEditing(null);
-                  // null = revert to suggested
-                  const next = v === 0 ? null : v;
-                  if (next !== (r.isProjected ? null : r.diario)) {
-                    onUpdate(r.date, "diario", next);
-                  }
-                }}
-                onCancel={() => setEditing(null)}
-                initial={r.diario}
-                placeholder={`${formatCurrencyCompact(suggestedDaily)}`}
-                display={formatCurrencyCompact(r.diario)}
-                tone="muted"
-              />
-              <div
-                className={cn(
-                  "text-right font-medium tabular-nums",
-                  negative && "text-rose-600 dark:text-rose-400",
-                  r.isProjected && !negative && "text-muted-foreground",
+
+              {/* Right: content */}
+              <div className="min-w-0">
+                {/* Top row: saldo + sparkline */}
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className={cn(
+                        "text-base font-semibold tabular-nums tracking-tight",
+                        negative && "text-rose-600 dark:text-rose-400",
+                        !negative && r.isFuture && "text-muted-foreground",
+                      )}
+                    >
+                      {formatCurrency(r.saldo)}
+                    </span>
+                    <DiarioInline
+                      value={r.diario}
+                      isOverride={r.hasOverride}
+                      suggested={suggestedDaily}
+                      onCommit={(v) => onUpdateDiario(r.date, v === 0 ? null : v)}
+                    />
+                  </div>
+                  <Sparkline pct={sparkPct} negative={negative} />
+                </div>
+
+                {/* Transactions row */}
+                {hasActivity && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {r.transactions.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => onOpenKind(t.kind)}
+                        className={cn(
+                          "group inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] tabular-nums transition-colors",
+                          t.kind === "entrada"
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                            : "border-rose-500/30 bg-rose-500/10 text-rose-700 hover:bg-rose-500/20 dark:text-rose-300",
+                        )}
+                      >
+                        {t.kind === "entrada" ? (
+                          <ArrowDownLeft className="h-3 w-3" />
+                        ) : (
+                          <ArrowUpRight className="h-3 w-3" />
+                        )}
+                        <span>{formatCurrencyCompact(t.amount)}</span>
+                        {t.label && (
+                          <span className="max-w-[100px] truncate opacity-70">· {t.label}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 )}
-              >
-                {formatCurrency(r.saldo)}
               </div>
             </li>
           );
         })}
       </ul>
+    </section>
+  );
+}
+
+function Sparkline({ pct, negative }: { pct: number; negative: boolean }) {
+  return (
+    <div className="relative h-1 w-20 overflow-hidden rounded-full bg-muted md:w-32">
+      <div
+        className={cn(
+          "absolute inset-y-0 left-0 rounded-full",
+          negative ? "bg-rose-500" : "bg-primary/70",
+        )}
+        style={{ width: `${Math.max(2, Math.min(100, pct))}%` }}
+      />
     </div>
   );
 }
 
-function EditableCell({
-  editing,
-  onStart,
+/* Diário inline-editable, super discreto */
+function DiarioInline({
+  value,
+  isOverride,
+  suggested,
   onCommit,
-  onCancel,
-  initial,
-  display,
-  placeholder,
-  tone,
 }: {
-  editing: boolean;
-  onStart: () => void;
-  onCommit: (value: number) => void;
-  onCancel: () => void;
-  initial: number;
-  display: string;
-  placeholder?: string;
-  tone: "positive" | "negative" | "muted";
+  value: number;
+  isOverride: boolean;
+  suggested: number;
+  onCommit: (v: number) => void;
 }) {
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (editing) {
-      setDraft(initial > 0 ? formatInput(initial) : "");
+      setDraft(value > 0 ? formatInput(value) : "");
       requestAnimationFrame(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
       });
     }
-  }, [editing, initial]);
+  }, [editing, value]);
 
   if (editing) {
     return (
-      <div className="flex justify-end">
-        <input
-          ref={inputRef}
-          inputMode="decimal"
-          value={draft}
-          placeholder={placeholder ?? "0,00"}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => onCommit(parseAmount(draft))}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              onCommit(parseAmount(draft));
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              onCancel();
-            }
-          }}
-          className="h-7 w-full rounded border border-primary/40 bg-background px-2 text-right text-sm tabular-nums outline-none ring-1 ring-primary/20 focus:border-primary"
-        />
-      </div>
+      <input
+        ref={inputRef}
+        inputMode="decimal"
+        value={draft}
+        placeholder={formatInput(suggested)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          onCommit(parseAmount(draft));
+          setEditing(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onCommit(parseAmount(draft));
+            setEditing(false);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setEditing(false);
+          }
+        }}
+        className="h-5 w-16 rounded border border-primary/40 bg-background px-1 text-right text-[11px] tabular-nums outline-none ring-1 ring-primary/20"
+      />
     );
   }
 
   return (
     <button
-      onClick={onStart}
+      onClick={() => setEditing(true)}
       className={cn(
-        "rounded px-2 py-1 text-right tabular-nums transition-colors hover:bg-muted",
-        tone === "positive" && "text-emerald-600 dark:text-emerald-400",
-        tone === "negative" && "text-rose-600 dark:text-rose-400",
-        tone === "muted" && "text-muted-foreground",
+        "rounded px-1 text-[11px] tabular-nums text-muted-foreground/80 transition-colors hover:bg-muted hover:text-foreground",
+        isOverride && "text-foreground/80",
       )}
+      title="Editar diário deste dia"
     >
-      {display}
+      −{formatCurrencyCompact(value)}
+      {isOverride && <span className="ml-0.5 text-primary">·</span>}
     </button>
+  );
+}
+
+/* ---------- Transactions panel (Sheet desktop / Drawer mobile) ---------- */
+function TransactionsPanel({
+  kind,
+  month,
+  transactions,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  kind: PanelKind;
+  month: string;
+  transactions: FinanceTransaction[];
+  onClose: () => void;
+  onSave: (input: Parameters<typeof upsertTransaction>[0]) => void;
+  onDelete: (id: string) => void;
+}) {
+  const isMobile = useIsMobile();
+  const open = kind !== null;
+
+  if (!kind) {
+    // Render closed wrapper to keep transition consistent
+  }
+
+  const title =
+    kind === "entrada" ? "Entradas do mês" : kind === "saida" ? "Saídas do mês" : "";
+
+  const filtered = transactions.filter((t) => t.kind === kind);
+  const total = filtered.reduce((s, t) => s + t.amount, 0);
+
+  const body = kind ? (
+    <PanelBody
+      kind={kind}
+      month={month}
+      list={filtered}
+      total={total}
+      onSave={onSave}
+      onDelete={onDelete}
+    />
+  ) : null;
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={(v) => !v && onClose()}>
+        <DrawerContent className="max-h-[88vh]">
+          <DrawerHeader className="px-4 pt-4">
+            <DrawerTitle className="text-left text-base">{title}</DrawerTitle>
+          </DrawerHeader>
+          <div className="overflow-y-auto px-4 pb-6">{body}</div>
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent side="right" className="w-full sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>{title}</SheetTitle>
+        </SheetHeader>
+        <div className="mt-4">{body}</div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function PanelBody({
+  kind,
+  month,
+  list,
+  total,
+  onSave,
+  onDelete,
+}: {
+  kind: "entrada" | "saida";
+  month: string;
+  list: FinanceTransaction[];
+  total: number;
+  onSave: (input: Parameters<typeof upsertTransaction>[0]) => void;
+  onDelete: (id: string) => void;
+}) {
+  const isCurrentMonth = month === currentMonth();
+  const defaultDate = isCurrentMonth ? todayIso() : `${month}-01`;
+
+  const [amountStr, setAmountStr] = useState("");
+  const [label, setLabel] = useState("");
+  const [date, setDate] = useState(defaultDate);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDate(defaultDate);
+  }, [defaultDate, kind]);
+
+  const tone =
+    kind === "entrada"
+      ? "text-emerald-600 dark:text-emerald-400"
+      : "text-rose-600 dark:text-rose-400";
+
+  function reset() {
+    setAmountStr("");
+    setLabel("");
+    setDate(defaultDate);
+    setEditingId(null);
+  }
+
+  function submit() {
+    const amount = parseAmount(amountStr);
+    if (amount <= 0) {
+      toast.error("Informe um valor maior que zero.");
+      return;
+    }
+    onSave({
+      id: editingId ?? undefined,
+      date,
+      kind,
+      amount,
+      label: label.trim() || null,
+    });
+    reset();
+  }
+
+  // Group by date for the list
+  const grouped = useMemo(() => {
+    const byDate = new Map<string, FinanceTransaction[]>();
+    for (const t of list) {
+      if (!byDate.has(t.date)) byDate.set(t.date, []);
+      byDate.get(t.date)!.push(t);
+    }
+    return Array.from(byDate.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [list]);
+
+  return (
+    <div className="space-y-5">
+      {/* Total */}
+      <div className="rounded-lg border bg-muted/30 p-4">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Total no mês</p>
+        <p className={cn("mt-1 text-2xl font-semibold tracking-tight tabular-nums", tone)}>
+          {formatCurrency(total)}
+        </p>
+      </div>
+
+      {/* Add form */}
+      <div className="space-y-2 rounded-lg border p-3">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          {editingId ? "Editar lançamento" : "Novo lançamento"}
+        </p>
+        <div className="grid grid-cols-[1fr_auto] gap-2">
+          <Input
+            inputMode="decimal"
+            placeholder="0,00"
+            value={amountStr}
+            onChange={(e) => setAmountStr(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+            }}
+            className={cn("h-10 text-right text-base tabular-nums", tone)}
+          />
+          <Input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="h-10 w-[140px]"
+          />
+        </div>
+        <Input
+          placeholder="Descrição (opcional)"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+          className="h-10"
+        />
+        <div className="flex items-center justify-end gap-2 pt-1">
+          {editingId && (
+            <Button size="sm" variant="ghost" onClick={reset}>
+              Cancelar
+            </Button>
+          )}
+          <Button size="sm" onClick={submit}>
+            <Plus className="mr-1 h-4 w-4" />
+            {editingId ? "Salvar" : "Adicionar"}
+          </Button>
+        </div>
+      </div>
+
+      {/* List */}
+      <div>
+        <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+          Lançamentos
+        </p>
+        {grouped.length === 0 ? (
+          <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+            Nenhum lançamento neste mês.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {grouped.map(([d, items]) => (
+              <li key={d}>
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {formatDayLabel(d)}
+                </p>
+                <ul className="divide-y rounded-lg border">
+                  {items.map((t) => (
+                    <li
+                      key={t.id}
+                      className="group flex items-center justify-between gap-2 px-3 py-2"
+                    >
+                      <button
+                        onClick={() => {
+                          setEditingId(t.id);
+                          setAmountStr(formatInput(t.amount));
+                          setLabel(t.label ?? "");
+                          setDate(t.date);
+                        }}
+                        className="flex-1 text-left"
+                      >
+                        <p className="text-sm">
+                          {t.label || (
+                            <span className="text-muted-foreground">Sem descrição</span>
+                          )}
+                        </p>
+                        <p className={cn("text-sm font-semibold tabular-nums", tone)}>
+                          {formatCurrency(t.amount)}
+                        </p>
+                      </button>
+                      <button
+                        onClick={() => onDelete(t.id)}
+                        className="rounded p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-rose-600 group-hover:opacity-100"
+                        aria-label="Remover"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -554,4 +965,3 @@ function ProjectionCard({
     </div>
   );
 }
-
