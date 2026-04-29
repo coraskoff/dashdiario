@@ -7,6 +7,8 @@ import {
   ArrowRight,
   ArrowDownLeft,
   ArrowUpRight,
+  AlertTriangle,
+  Sparkles,
   Pencil,
   Plus,
   Trash2,
