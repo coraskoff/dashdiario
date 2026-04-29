@@ -243,7 +243,7 @@ function Header({
   );
 }
 
-/* ---------- hero: projeção + ritmo ---------- */
+/* ---------- hero card: projeção + ritmo ---------- */
 function HeroCard({
   month,
   config,
