@@ -503,11 +503,11 @@ function Stat({
   emphasize?: boolean;
 }) {
   return (
-    <div className="bg-card p-4">
+    <div className="min-w-0 bg-card p-3 sm:p-4">
       <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <p
         className={cn(
-          "mt-1 font-semibold tracking-tight",
+          "mt-1 truncate font-semibold tabular-nums tracking-tight",
           emphasize ? "text-xl" : "text-base",
           tone === "positive" && value > 0 && "text-emerald-600 dark:text-emerald-400",
           tone === "negative" && value > 0 && "text-rose-600 dark:text-rose-400",
@@ -534,15 +534,15 @@ function StatButton({
   return (
     <button
       onClick={onClick}
-      className="group bg-card p-4 text-left transition-colors hover:bg-muted/40 focus:bg-muted/40 focus:outline-none"
+      className="group min-w-0 bg-card p-3 text-left transition-colors hover:bg-muted/40 focus:bg-muted/40 focus:outline-none sm:p-4"
     >
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
         <Plus className="h-3 w-3 text-muted-foreground/50 transition-colors group-hover:text-primary" />
       </div>
       <p
         className={cn(
-          "mt-1 text-base font-semibold tracking-tight",
+          "mt-1 truncate text-base font-semibold tabular-nums tracking-tight",
           tone === "positive" && value > 0 && "text-emerald-600 dark:text-emerald-400",
           tone === "negative" && value > 0 && "text-rose-600 dark:text-rose-400",
         )}
