@@ -8,9 +8,11 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   AlertTriangle,
+  ChevronDown,
   Sparkles,
   Pencil,
   Plus,
+  Repeat2,
   Trash2,
 } from "lucide-react";
 
@@ -67,6 +69,19 @@ function parseAmount(input: string): number {
 function formatInput(value: number): string {
   if (!value) return "";
   return value.toFixed(2).replace(".", ",");
+}
+
+function shiftDate(dateStr: string, months: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const target = new Date(y, m - 1 + months, 1);
+  const maxDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  const safeDay = Math.min(d, maxDay);
+  return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(safeDay).padStart(2, "0")}`;
+}
+
+function remainingMonthsInYear(dateStr: string): number {
+  const m = Number(dateStr.split("-")[1]);
+  return 12 - m + 1;
 }
 
 type PanelKind = "entrada" | "saida" | null;
@@ -578,6 +593,12 @@ function Pulse({
   const recalibrated = remainingDays > 0 ? remainingBudget / remainingDays : 0;
   const isOver = insightDelta > 0.5;
 
+  const pastRows = rows.filter((r) => !r.isFuture && !r.isToday);
+  const currentRows = rows.filter((r) => r.isToday || r.isFuture);
+  const pastDiario = pastRows.reduce((s, r) => s + r.diario, 0);
+  const pastEntrada = pastRows.reduce((s, r) => s + r.entrada, 0);
+  const pastSaida = pastRows.reduce((s, r) => s + r.saida, 0);
+
   useEffect(() => {
     if (todayRef.current) {
       todayRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -667,10 +688,157 @@ function Pulse({
       )}
 
       <ul className="relative">
-        {rows.map((r, i) => {
+        {/* ── Dias anteriores (colapsável) ── */}
+        {pastRows.length > 0 && (
+          <li className="border-b border-border/40">
+            <details className="group">
+              <summary className="flex cursor-pointer list-none select-none items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground transition-colors hover:text-foreground sm:px-4">
+                <ChevronDown className="h-3 w-3 shrink-0 -rotate-90 transition-transform duration-200 group-open:rotate-0" />
+                <span className="font-medium">Dias anteriores</span>
+                <span className="tabular-nums">
+                  {" "}· Diário {formatCurrencyCompact(pastDiario)}
+                </span>
+                {pastEntrada > 0 && (
+                  <span className="tabular-nums text-emerald-700 dark:text-emerald-400">
+                    · Entradas {formatCurrencyCompact(pastEntrada)}
+                  </span>
+                )}
+                {pastSaida > 0 && (
+                  <span className="tabular-nums text-rose-700 dark:text-rose-400">
+                    · Saídas {formatCurrencyCompact(pastSaida)}
+                  </span>
+                )}
+              </summary>
+              <ul>
+                {pastRows.map((r, i) => {
+                  const negative = r.saldo < 0;
+                  const hasActivity = r.transactions.length > 0;
+                  const isLast = i === pastRows.length - 1;
+                  const dayDelta = r.diario - suggestedDaily;
+                  const deltaTone: "over" | "under" | "neutral" =
+                    Math.abs(dayDelta) < 0.005 ? "neutral" : dayDelta > 0 ? "over" : "under";
+                  return (
+                    <li
+                      key={r.date}
+                      className={cn(
+                        "relative grid grid-cols-[44px_1fr] gap-2 px-3 py-3 opacity-60 transition-colors sm:grid-cols-[56px_1fr] sm:gap-3 sm:px-4",
+                        !isLast && "border-b border-border/40",
+                      )}
+                    >
+                      <div className="relative flex flex-col items-center">
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "absolute left-1/2 top-0 h-full w-px -translate-x-1/2",
+                            "bg-border/60",
+                          )}
+                        />
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "relative z-10 mt-1.5 h-2 w-2 rounded-full ring-4 ring-card",
+                            negative ? "bg-rose-500" : hasActivity ? "bg-foreground/60" : "bg-border",
+                          )}
+                        />
+                        <div className="relative z-10 mt-1 flex flex-col items-center">
+                          <span className="text-xs font-semibold tabular-nums">
+                            {String(r.dayNumber).padStart(2, "0")}
+                          </span>
+                          <span className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                            {["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][r.weekday]}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-stretch gap-3 sm:gap-4">
+                          <div className="flex min-w-0 flex-1 flex-col gap-1">
+                            <DiarioInline
+                              value={r.diario}
+                              isOverride={r.hasOverride}
+                              suggested={suggestedDaily}
+                              onCommit={(v) => onUpdateDiario(r.date, v === 0 ? null : v)}
+                            />
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                gasto
+                              </span>
+                              {suggestedDaily > 0 && (
+                                <span
+                                  className={cn(
+                                    "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium tabular-nums",
+                                    deltaTone === "over" &&
+                                      "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+                                    deltaTone === "under" &&
+                                      "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+                                    deltaTone === "neutral" && "bg-muted text-muted-foreground",
+                                  )}
+                                  title={`Meta diária: ${formatCurrency(suggestedDaily)}`}
+                                >
+                                  {deltaTone === "neutral"
+                                    ? "no alvo"
+                                    : `${dayDelta > 0 ? "+" : "−"}${formatCurrencyCompact(Math.abs(dayDelta))} vs meta`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="w-px shrink-0 self-stretch bg-border/60" aria-hidden />
+                          <div className="flex min-w-0 flex-1 flex-col gap-1">
+                            <span
+                              className={cn(
+                                "truncate text-lg font-semibold tabular-nums tracking-tight",
+                                negative
+                                  ? "text-rose-600 dark:text-rose-400"
+                                  : "text-foreground/90",
+                              )}
+                              title="Saldo correndo"
+                            >
+                              {formatCurrency(r.saldo)}
+                            </span>
+                            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                              saldo
+                            </span>
+                          </div>
+                        </div>
+                        {hasActivity && (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            {r.transactions.map((t) => (
+                              <button
+                                key={t.id}
+                                onClick={() => onOpenKind(t.kind)}
+                                className={cn(
+                                  "group inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] tabular-nums transition-colors",
+                                  t.kind === "entrada"
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                                    : "border-rose-500/30 bg-rose-500/10 text-rose-700 hover:bg-rose-500/20 dark:text-rose-300",
+                                )}
+                              >
+                                {t.kind === "entrada" ? (
+                                  <ArrowDownLeft className="h-3 w-3" />
+                                ) : (
+                                  <ArrowUpRight className="h-3 w-3" />
+                                )}
+                                <span>{formatCurrencyCompact(t.amount)}</span>
+                                {t.label && (
+                                  <span className="max-w-[100px] truncate opacity-70">· {t.label}</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          </li>
+        )}
+
+        {/* ── Hoje e dias futuros ── */}
+        {currentRows.map((r, i) => {
           const negative = r.saldo < 0;
           const hasActivity = r.transactions.length > 0;
-          const isLast = i === rows.length - 1;
+          const isLast = i === currentRows.length - 1;
           const dayDelta = r.diario - suggestedDaily;
           const deltaTone: "over" | "under" | "neutral" =
             Math.abs(dayDelta) < 0.005 ? "neutral" : dayDelta > 0 ? "over" : "under";
@@ -980,6 +1148,9 @@ function PanelBody({
   const [label, setLabel] = useState("");
   const [date, setDate] = useState(defaultDate);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [recurring, setRecurring] = useState(false);
+  const [recurringCount, setRecurringCount] = useState(3);
+  const [unlimited, setUnlimited] = useState(false);
 
   useEffect(() => {
     setDate(defaultDate);
@@ -990,11 +1161,19 @@ function PanelBody({
       ? "text-emerald-600 dark:text-emerald-400"
       : "text-rose-600 dark:text-rose-400";
 
+  const activeTone =
+    kind === "entrada"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800"
+      : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800";
+
   function reset() {
     setAmountStr("");
     setLabel("");
     setDate(defaultDate);
     setEditingId(null);
+    setRecurring(false);
+    setRecurringCount(3);
+    setUnlimited(false);
   }
 
   function submit() {
@@ -1003,15 +1182,30 @@ function PanelBody({
       toast.error("Informe um valor maior que zero.");
       return;
     }
-    onSave({
-      id: editingId ?? undefined,
-      date,
-      kind,
-      amount,
-      label: label.trim() || null,
-    });
+    const occurrences =
+      !recurring || editingId
+        ? 1
+        : unlimited
+          ? remainingMonthsInYear(date)
+          : recurringCount;
+    for (let i = 0; i < occurrences; i++) {
+      onSave({
+        id: i === 0 ? (editingId ?? undefined) : undefined,
+        date: i === 0 ? date : shiftDate(date, i),
+        kind,
+        amount,
+        label: label.trim() || null,
+      });
+    }
     reset();
   }
+
+  const submitLabel = (() => {
+    if (editingId) return "Salvar";
+    if (!recurring) return "Adicionar";
+    if (unlimited) return `Adicionar ∞`;
+    return `Adicionar ×${recurringCount}`;
+  })();
 
   // Group by date for the list
   const grouped = useMemo(() => {
@@ -1065,6 +1259,59 @@ function PanelBody({
           }}
           className="h-10"
         />
+        {!editingId && (
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setRecurring((v) => !v)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                recurring
+                  ? activeTone
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Repeat2 className="h-3 w-3" />
+              Recorrente
+            </button>
+
+            {recurring && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Repetir por</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={60}
+                  value={unlimited ? "" : recurringCount}
+                  disabled={unlimited}
+                  onChange={(e) => {
+                    const v = Math.max(2, Math.min(60, Number(e.target.value) || 2));
+                    setRecurringCount(v);
+                  }}
+                  className={cn(
+                    "h-7 w-14 rounded border bg-background text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-ring",
+                    unlimited && "opacity-30",
+                  )}
+                  placeholder="—"
+                />
+                <span className="text-[11px] text-muted-foreground">meses</span>
+                <button
+                  type="button"
+                  onClick={() => setUnlimited((v) => !v)}
+                  className={cn(
+                    "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                    unlimited
+                      ? activeTone
+                      : "border-border text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  ∞ Ilimitado
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center justify-end gap-2 pt-1">
           {editingId && (
             <Button size="sm" variant="ghost" onClick={reset}>
@@ -1073,7 +1320,7 @@ function PanelBody({
           )}
           <Button size="sm" onClick={submit}>
             <Plus className="mr-1 h-4 w-4" />
-            {editingId ? "Salvar" : "Adicionar"}
+            {submitLabel}
           </Button>
         </div>
       </div>
@@ -1146,61 +1393,181 @@ function ProjectionCard({
   highlightMonth: string;
 }) {
   if (projection.length === 0) return null;
-  const values = projection.map((p) => p.closingBalance);
-  const min = Math.min(0, ...values);
-  const max = Math.max(0, ...values);
-  const range = max - min || 1;
+
+  const currentBalance = projection.find((p) => p.month === highlightMonth)?.closingBalance ?? 0;
+  const decemberBalance = projection[projection.length - 1]?.closingBalance ?? 0;
+  const negativeCount = projection.filter((p) => p.closingBalance < 0).length;
+
+  // SVG chart geometry
+  const W = 540;
+  const H = 160;
+  const PL = 62; // left pad for Y labels
+  const PR = 8;
+  const PT = 10;
+  const PB = 20; // bottom pad for X labels
+  const plotW = W - PL - PR;
+  const plotH = H - PT - PB;
+  const n = projection.length;
+
+  const allVals = projection.map((p) => p.closingBalance);
+  const minVal = Math.min(0, ...allVals);
+  const maxVal = Math.max(0, ...allVals);
+  const valRange = maxVal - minVal || 1;
+
+  const toX = (i: number) => PL + (i / Math.max(n - 1, 1)) * plotW;
+  const toY = (v: number) => PT + (1 - (v - minVal) / valRange) * plotH;
+
+  const pts = projection.map((p, i) => ({ ...p, x: toX(i), y: toY(p.closingBalance) }));
+  const zeroY = toY(0);
+
+  const pastPts = pts.filter((p) => p.month <= highlightMonth);
+  const futurePts = pts.filter((p) => p.month >= highlightMonth);
+  const pathD = (points: typeof pts) =>
+    points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+
+  // 5 evenly-spaced Y ticks
+  const yTicks = Array.from({ length: 5 }, (_, i) => minVal + (i / 4) * valRange);
 
   return (
     <div className="rounded-xl border bg-card p-5">
-      <div className="mb-4 flex items-baseline justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Projeção</p>
-          <h2 className="text-base font-semibold">Saldo até dezembro</h2>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Considera o diário sugerido para meses sem registros
-        </p>
+      <div className="mb-4">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Projeção</p>
+        <h2 className="text-base font-semibold">Saldo até dezembro</h2>
       </div>
 
-      <div className="grid grid-cols-12 items-end gap-1 h-32">
-        {projection.map((p) => {
-          const heightPct = ((p.closingBalance - min) / range) * 100;
-          const isHighlight = p.month === highlightMonth;
-          const negative = p.closingBalance < 0;
+      {/* 3 summary cards */}
+      <div className="mb-5 grid grid-cols-3 gap-3">
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Saldo atual</p>
+          <p className={cn("mt-1 text-lg font-semibold tabular-nums tracking-tight",
+            currentBalance < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
+            {formatCurrencyCompact(currentBalance)}
+          </p>
+        </div>
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Projeção dezembro</p>
+          <p className={cn("mt-1 text-lg font-semibold tabular-nums tracking-tight",
+            decemberBalance < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
+            {formatCurrencyCompact(decemberBalance)}
+          </p>
+        </div>
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Meses negativos</p>
+          <p className={cn("mt-1 text-lg font-semibold tabular-nums tracking-tight",
+            negativeCount > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
+            {negativeCount} de {projection.length}
+          </p>
+        </div>
+      </div>
+
+      {/* SVG line chart — zero external dependencies */}
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible" aria-hidden>
+
+        {/* Y-axis grid + labels */}
+        {yTicks.map((v, i) => {
+          const y = toY(v);
           return (
-            <div key={p.month} className="flex h-full flex-col items-center justify-end">
-              <div
-                className={cn(
-                  "w-full rounded-t-sm transition-colors",
-                  negative ? "bg-rose-500/70" : "bg-primary/70",
-                  isHighlight && "ring-2 ring-primary ring-offset-1 ring-offset-card",
-                )}
-                style={{ height: `${Math.max(2, heightPct)}%` }}
-              />
-            </div>
+            <g key={i}>
+              <line x1={PL} y1={y} x2={W - PR} y2={y}
+                stroke="hsl(var(--border))" strokeOpacity={0.5} strokeWidth={0.5} />
+              <text x={PL - 5} y={y} dy="0.35em" textAnchor="end" fontSize={9}
+                style={{ fill: "hsl(var(--muted-foreground))" }}>
+                {formatCurrencyCompact(v)}
+              </text>
+            </g>
           );
         })}
-      </div>
-      <div className="mt-2 grid grid-cols-12 gap-1 text-center text-[10px] text-muted-foreground">
-        {projection.map((p) => (
-          <div key={p.month} className="capitalize">
+
+        {/* Zero reference line */}
+        {zeroY >= PT && zeroY <= PT + plotH && (
+          <line x1={PL} y1={zeroY} x2={W - PR} y2={zeroY}
+            stroke="hsl(var(--destructive))" strokeOpacity={0.4} strokeWidth={1} />
+        )}
+
+        {/* Realized path — solid dark */}
+        {pastPts.length > 1 && (
+          <path d={pathD(pastPts)} fill="none" strokeWidth={1.5}
+            strokeLinecap="round" strokeLinejoin="round"
+            style={{ stroke: "hsl(var(--foreground))" }} />
+        )}
+
+        {/* Projected path — dashed primary */}
+        {futurePts.length > 1 && (
+          <path d={pathD(futurePts)} fill="none" strokeWidth={1.5}
+            strokeDasharray="5 4" strokeLinecap="round" strokeLinejoin="round"
+            style={{ stroke: "hsl(var(--primary))" }} />
+        )}
+
+        {/* X-axis labels */}
+        {pts.map((p) => (
+          <text key={`x-${p.month}`} x={p.x} y={H - 3} textAnchor="middle" fontSize={9}
+            fontWeight={p.month === highlightMonth ? "600" : "400"}
+            style={{ fill: "hsl(var(--muted-foreground))" }}>
             {p.label.split(" ")[0].slice(0, 3)}
-          </div>
+          </text>
         ))}
-      </div>
-      <div className="mt-2 grid grid-cols-12 gap-1 text-center text-[10px] tabular-nums">
-        {projection.map((p) => (
-          <div
-            key={p.month}
-            className={cn(
-              p.closingBalance < 0 ? "text-rose-600 dark:text-rose-400" : "text-foreground",
-              p.month === highlightMonth && "font-semibold",
-            )}
-          >
-            {formatCurrencyCompact(p.closingBalance)}
-          </div>
+
+        {/* Dots layer (below hit areas) */}
+        {pts.map((p) => (
+          <circle key={`dot-${p.month}`}
+            cx={p.x} cy={p.y}
+            r={p.month === highlightMonth ? 4 : 3}
+            style={{ fill: p.month <= highlightMonth ? "hsl(var(--foreground))" : "hsl(var(--primary))" }}
+          />
         ))}
+
+        {/* Hit areas + tooltips (top layer — always above dots) */}
+        {pts.map((p) => {
+          const bal = p.closingBalance;
+          const ttW = 168;
+          const ttH = 52;
+          const ttX = Math.min(Math.max(p.x - ttW / 2, PL), W - PR - ttW);
+          const ttY = p.y - ttH - 12 < PT ? p.y + 14 : p.y - ttH - 12;
+          return (
+            <g key={`hit-${p.month}`} className="group/pt">
+              {/* Invisible hit area */}
+              <circle cx={p.x} cy={p.y} r={14} fill="transparent" />
+              {/* Tooltip */}
+              <g className="pointer-events-none opacity-0 transition-opacity duration-100 group-hover/pt:opacity-100">
+                <rect x={ttX} y={ttY} width={ttW} height={ttH} rx={6}
+                  style={{ fill: "hsl(var(--card))", stroke: "hsl(var(--border))" }}
+                  strokeWidth={1}
+                  filter="drop-shadow(0 2px 6px rgba(0,0,0,0.08))" />
+                <text x={ttX + 10} y={ttY + 16} fontSize={10} fontWeight="600"
+                  style={{ fill: "hsl(var(--foreground))" }}>
+                  {p.label}
+                </text>
+                <text x={ttX + 10} y={ttY + 33} fontSize={9}
+                  style={{ fill: "hsl(var(--muted-foreground))" }}>
+                  Saldo acumulado
+                </text>
+                <text x={ttX + ttW - 10} y={ttY + 33} fontSize={9} fontWeight="600"
+                  textAnchor="end"
+                  style={{ fill: bal < 0 ? "hsl(var(--destructive))" : "hsl(var(--foreground))" }}>
+                  {formatCurrency(bal)}
+                </text>
+              </g>
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Manual legend */}
+      <div className="mt-2 flex items-center gap-5 text-[11px] text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className="block h-px w-5 bg-foreground" />
+          Realizado
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="block h-px w-5 shrink-0" style={{
+            backgroundImage: "repeating-linear-gradient(to right,hsl(var(--primary)) 0,hsl(var(--primary)) 4px,transparent 4px,transparent 8px)",
+          }} />
+          Projetado
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="block h-px w-5 bg-destructive/40" />
+          Linha zero
+        </span>
       </div>
     </div>
   );
