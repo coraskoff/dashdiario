@@ -157,7 +157,7 @@ function FinancePage() {
   const suggested = suggestedDaily(monthConfig?.variable_amount ?? 0, month);
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 md:px-8">
+    <div className="mx-auto w-full max-w-5xl space-y-5 px-3 py-5 sm:px-4 md:space-y-6 md:px-8 md:py-6">
       <Header
         month={month}
         onPrev={() => setMonth(shiftMonth(month, -1))}
@@ -219,14 +219,14 @@ function Header({
 }) {
   const isCurrent = month === currentMonth();
   return (
-    <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-      <div>
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Finanças</p>
-        <h1 className="text-2xl font-semibold capitalize tracking-tight md:text-3xl">
+    <header className="flex flex-row items-end justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Finanças</p>
+        <h1 className="truncate text-xl font-semibold capitalize tracking-tight md:text-3xl">
           {formatMonthLabel(month)}
         </h1>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         <Button variant="ghost" size="icon" onClick={onPrev} aria-label="Mês anterior">
           <ArrowLeft />
         </Button>
