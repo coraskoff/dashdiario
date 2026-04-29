@@ -157,7 +157,7 @@ function FinancePage() {
   const suggested = suggestedDaily(monthConfig?.variable_amount ?? 0, month);
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 md:px-8">
+    <div className="mx-auto w-full max-w-5xl space-y-5 px-3 py-5 sm:px-4 md:space-y-6 md:px-8 md:py-6">
       <Header
         month={month}
         onPrev={() => setMonth(shiftMonth(month, -1))}
@@ -219,14 +219,14 @@ function Header({
 }) {
   const isCurrent = month === currentMonth();
   return (
-    <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-      <div>
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Finanças</p>
-        <h1 className="text-2xl font-semibold capitalize tracking-tight md:text-3xl">
+    <header className="flex flex-row items-end justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Finanças</p>
+        <h1 className="truncate text-xl font-semibold capitalize tracking-tight md:text-3xl">
           {formatMonthLabel(month)}
         </h1>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         <Button variant="ghost" size="icon" onClick={onPrev} aria-label="Mês anterior">
           <ArrowLeft />
         </Button>
@@ -304,13 +304,13 @@ function HeroCard({
     <section className="overflow-hidden rounded-xl border bg-card">
       <div className="grid gap-px bg-border md:grid-cols-2">
         {/* Bloco esquerdo: projeção */}
-        <div className="bg-card p-5 md:p-6">
+        <div className="min-w-0 bg-card p-4 md:p-6">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
             Projeção de saldo — fim do mês
           </p>
           <p
             className={cn(
-              "mt-2 text-4xl font-semibold tracking-tight tabular-nums md:text-5xl",
+              "mt-2 break-words text-3xl font-semibold leading-tight tracking-tight tabular-nums sm:text-4xl md:text-5xl",
               isProjPositive
                 ? "text-emerald-600 dark:text-emerald-400"
                 : "text-rose-600 dark:text-rose-400",
@@ -336,7 +336,7 @@ function HeroCard({
           </div>
 
           {/* Contexto: variável (editável) + diário sugerido */}
-          <div className="mt-5 flex items-center gap-4 border-t pt-3 text-xs text-muted-foreground">
+          <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 border-t pt-3 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <span className="uppercase tracking-wide">Variável</span>
               {editing ? (
@@ -369,7 +369,7 @@ function HeroCard({
                 </button>
               )}
             </div>
-            <span className="text-border">•</span>
+            <span className="hidden text-border sm:inline">•</span>
             <div className="flex items-center gap-1.5">
               <span className="uppercase tracking-wide">Diário</span>
               <span className="font-medium text-foreground tabular-nums">
@@ -380,13 +380,13 @@ function HeroCard({
         </div>
 
         {/* Bloco direito: gasto vs tempo */}
-        <div className="bg-card p-5 md:p-6">
-          <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 bg-card p-4 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Gasto vs tempo decorrido
             </p>
             {variable > 0 && (
-              <p className="text-xs tabular-nums text-muted-foreground">
+              <p className="text-[11px] tabular-nums text-muted-foreground sm:text-xs">
                 <span className="font-medium text-foreground">{pctMonth}%</span> do mês /{" "}
                 <span
                   className={cn(
@@ -424,17 +424,17 @@ function HeroCard({
             </div>
 
             {/* Labels */}
-            <div className="mt-2 flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
+            <div className="mt-2 flex items-center justify-between gap-2 text-[10px] tabular-nums text-muted-foreground sm:text-[11px]">
               <span>R$ 0</span>
-              <span className="text-foreground/80">
-                Meta proporcional {formatCurrencyCompact(targetProportional)}
+              <span className="truncate text-foreground/80">
+                Meta {formatCurrencyCompact(targetProportional)}
               </span>
               <span>{formatCurrencyCompact(variable)}</span>
             </div>
           </div>
 
           {/* Legenda */}
-          <div className="mt-4 flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground">
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <span
                 className={cn(
@@ -446,7 +446,7 @@ function HeroCard({
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-px bg-foreground/70" />
-              Meta proporcional ao dia
+              Meta ao dia
             </span>
           </div>
         </div>
@@ -503,11 +503,11 @@ function Stat({
   emphasize?: boolean;
 }) {
   return (
-    <div className="bg-card p-4">
+    <div className="min-w-0 bg-card p-3 sm:p-4">
       <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <p
         className={cn(
-          "mt-1 font-semibold tracking-tight",
+          "mt-1 truncate font-semibold tabular-nums tracking-tight",
           emphasize ? "text-xl" : "text-base",
           tone === "positive" && value > 0 && "text-emerald-600 dark:text-emerald-400",
           tone === "negative" && value > 0 && "text-rose-600 dark:text-rose-400",
@@ -534,15 +534,15 @@ function StatButton({
   return (
     <button
       onClick={onClick}
-      className="group bg-card p-4 text-left transition-colors hover:bg-muted/40 focus:bg-muted/40 focus:outline-none"
+      className="group min-w-0 bg-card p-3 text-left transition-colors hover:bg-muted/40 focus:bg-muted/40 focus:outline-none sm:p-4"
     >
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
         <Plus className="h-3 w-3 text-muted-foreground/50 transition-colors group-hover:text-primary" />
       </div>
       <p
         className={cn(
-          "mt-1 text-base font-semibold tracking-tight",
+          "mt-1 truncate text-base font-semibold tabular-nums tracking-tight",
           tone === "positive" && value > 0 && "text-emerald-600 dark:text-emerald-400",
           tone === "negative" && value > 0 && "text-rose-600 dark:text-rose-400",
         )}
@@ -586,12 +586,12 @@ function Pulse({
 
   return (
     <section className="overflow-hidden rounded-xl border bg-card">
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-3 sm:px-4">
+        <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Pulso diário</p>
           <h2 className="text-sm font-semibold">Saldo correndo</h2>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             entrada
@@ -606,7 +606,7 @@ function Pulse({
       {elapsed.length > 0 && suggestedDaily > 0 && (
         <div
           className={cn(
-            "flex items-start gap-3 border-b px-4 py-3",
+            "flex items-start gap-3 border-b px-3 py-3 sm:px-4",
             isOver
               ? "bg-rose-500/10 text-rose-900 dark:text-rose-200"
               : "bg-emerald-500/10 text-emerald-900 dark:text-emerald-200",
@@ -679,7 +679,7 @@ function Pulse({
               key={r.date}
               ref={r.isToday ? todayRef : undefined}
               className={cn(
-                "relative grid grid-cols-[56px_1fr] gap-3 px-4 py-3 transition-colors",
+                "relative grid grid-cols-[44px_1fr] gap-2 px-3 py-3 transition-colors sm:grid-cols-[56px_1fr] sm:gap-3 sm:px-4",
                 r.isToday && "bg-primary/[0.04]",
                 r.isFuture && "opacity-60",
                 !isLast && "border-b border-border/40",
@@ -728,7 +728,7 @@ function Pulse({
               {/* Right: content */}
               <div className="min-w-0">
                 {/* Top row: dois blocos com mesmo peso visual — gasto | saldo */}
-                <div className="flex items-stretch gap-4">
+                <div className="flex items-stretch gap-3 sm:gap-4">
                   {/* Bloco esquerdo: gasto + delta vs meta */}
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <DiarioInline
@@ -737,7 +737,7 @@ function Pulse({
                       suggested={suggestedDaily}
                       onCommit={(v) => onUpdateDiario(r.date, v === 0 ? null : v)}
                     />
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
                         gasto
                       </span>
@@ -764,40 +764,24 @@ function Pulse({
                   {/* Divisor sutil */}
                   <div className="w-px shrink-0 self-stretch bg-border/60" aria-hidden />
 
-                  {/* Bloco direito: saldo do dia com mesma escala tipográfica */}
+                  {/* Bloco direito: saldo do dia — sempre visível, mesma escala */}
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    {hasActivity || r.hasOverride ? (
-                      <>
-                        <span
-                          className={cn(
-                            "text-lg font-semibold tabular-nums tracking-tight",
-                            negative
-                              ? "text-rose-600 dark:text-rose-400"
-                              : r.isFuture
-                                ? "text-foreground/60"
-                                : "text-foreground/90",
-                          )}
-                          title="Saldo correndo"
-                        >
-                          {formatCurrency(r.saldo)}
-                        </span>
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          saldo
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span
-                          className="text-lg font-semibold tabular-nums tracking-tight text-muted-foreground/40"
-                          aria-hidden
-                        >
-                          —
-                        </span>
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
-                          saldo
-                        </span>
-                      </>
-                    )}
+                    <span
+                      className={cn(
+                        "truncate text-lg font-semibold tabular-nums tracking-tight",
+                        negative
+                          ? "text-rose-600 dark:text-rose-400"
+                          : r.isFuture
+                            ? "text-foreground/60"
+                            : "text-foreground/90",
+                      )}
+                      title="Saldo correndo"
+                    >
+                      {formatCurrency(r.saldo)}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      saldo
+                    </span>
                   </div>
                 </div>
 
