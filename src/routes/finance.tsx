@@ -662,21 +662,7 @@ function Pulse({
   );
 }
 
-function Sparkline({ pct, negative }: { pct: number; negative: boolean }) {
-  return (
-    <div className="relative h-1 w-20 overflow-hidden rounded-full bg-muted md:w-32">
-      <div
-        className={cn(
-          "absolute inset-y-0 left-0 rounded-full",
-          negative ? "bg-rose-500" : "bg-primary/70",
-        )}
-        style={{ width: `${Math.max(2, Math.min(100, pct))}%` }}
-      />
-    </div>
-  );
-}
-
-/* Diário inline-editable, super discreto */
+/* Diário inline-editable — protagonista da linha */
 function DiarioInline({
   value,
   isOverride,
@@ -724,7 +710,7 @@ function DiarioInline({
             setEditing(false);
           }
         }}
-        className="h-5 w-16 rounded border border-primary/40 bg-background px-1 text-right text-[11px] tabular-nums outline-none ring-1 ring-primary/20"
+        className="h-8 w-28 rounded border border-primary/40 bg-background px-2 text-lg font-semibold tabular-nums tracking-tight outline-none ring-1 ring-primary/20"
       />
     );
   }
@@ -733,13 +719,17 @@ function DiarioInline({
     <button
       onClick={() => setEditing(true)}
       className={cn(
-        "rounded px-1 text-[11px] tabular-nums text-muted-foreground/80 transition-colors hover:bg-muted hover:text-foreground",
-        isOverride && "text-foreground/80",
+        "group inline-flex items-baseline gap-1 rounded px-1 -mx-1 text-lg font-semibold tabular-nums tracking-tight transition-colors hover:bg-muted",
+        isOverride ? "text-foreground" : "text-foreground/90",
       )}
       title="Editar diário deste dia"
     >
-      −{formatCurrencyCompact(value)}
-      {isOverride && <span className="ml-0.5 text-primary">·</span>}
+      {formatCurrency(value)}
+      {isOverride && (
+        <span className="text-[9px] font-medium uppercase tracking-wider text-primary/80">
+          ajustado
+        </span>
+      )}
     </button>
   );
 }
