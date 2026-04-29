@@ -586,12 +586,12 @@ function Pulse({
 
   return (
     <section className="overflow-hidden rounded-xl border bg-card">
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-3 sm:px-4">
+        <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Pulso diário</p>
           <h2 className="text-sm font-semibold">Saldo correndo</h2>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             entrada
@@ -606,7 +606,7 @@ function Pulse({
       {elapsed.length > 0 && suggestedDaily > 0 && (
         <div
           className={cn(
-            "flex items-start gap-3 border-b px-4 py-3",
+            "flex items-start gap-3 border-b px-3 py-3 sm:px-4",
             isOver
               ? "bg-rose-500/10 text-rose-900 dark:text-rose-200"
               : "bg-emerald-500/10 text-emerald-900 dark:text-emerald-200",
