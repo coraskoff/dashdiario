@@ -165,15 +165,17 @@ function FinancePage() {
         onToday={() => setMonth(currentMonth())}
       />
 
-      <MonthConfigCard
+      <HeroCard
         month={month}
         config={monthConfig}
-        onSave={(variable) =>
+        summary={summary}
+        openingBalance={openingBalance}
+        onSaveVariable={(variable) =>
           updateMonthMutation.mutate({ month, variable_amount: variable })
         }
       />
 
-      <SummaryCard
+      <SecondaryStats
         summary={summary}
         openingBalance={openingBalance}
         onOpenEntradas={() => setPanel("entrada")}
