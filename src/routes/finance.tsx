@@ -585,45 +585,78 @@ function Pulse({
 
               {/* Right: content */}
               <div className="min-w-0">
-                {/* Top row: gasto diário (protagonista) + delta pill + saldo (secundário) */}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <DiarioInline
-                    value={r.diario}
-                    isOverride={r.hasOverride}
-                    suggested={suggestedDaily}
-                    onCommit={(v) => onUpdateDiario(r.date, v === 0 ? null : v)}
-                  />
-                  {suggestedDaily > 0 && (
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums",
-                        deltaTone === "over" &&
-                          "bg-rose-500/15 text-rose-700 dark:text-rose-300",
-                        deltaTone === "under" &&
-                          "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-                        deltaTone === "neutral" && "bg-muted text-muted-foreground",
+                {/* Top row: dois blocos com mesmo peso visual — gasto | saldo */}
+                <div className="flex items-stretch gap-4">
+                  {/* Bloco esquerdo: gasto + delta vs meta */}
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <DiarioInline
+                      value={r.diario}
+                      isOverride={r.hasOverride}
+                      suggested={suggestedDaily}
+                      onCommit={(v) => onUpdateDiario(r.date, v === 0 ? null : v)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        gasto
+                      </span>
+                      {suggestedDaily > 0 && (
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium tabular-nums",
+                            deltaTone === "over" &&
+                              "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+                            deltaTone === "under" &&
+                              "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+                            deltaTone === "neutral" && "bg-muted text-muted-foreground",
+                          )}
+                          title={`Meta diária: ${formatCurrency(suggestedDaily)}`}
+                        >
+                          {deltaTone === "neutral"
+                            ? "no alvo"
+                            : `${dayDelta > 0 ? "+" : "−"}${formatCurrencyCompact(Math.abs(dayDelta))} vs meta`}
+                        </span>
                       )}
-                      title={`Meta diária: ${formatCurrency(suggestedDaily)}`}
-                    >
-                      {deltaTone === "neutral"
-                        ? "no alvo"
-                        : `${dayDelta > 0 ? "+" : "−"}${formatCurrencyCompact(Math.abs(dayDelta))} vs meta`}
-                    </span>
-                  )}
-                  {(hasActivity || r.hasOverride) && (
-                    <span
-                      className={cn(
-                        "ml-auto inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] tabular-nums",
-                        negative
-                          ? "border-rose-500/30 text-rose-600 dark:text-rose-400"
-                          : "border-border text-muted-foreground",
-                        r.isFuture && "text-muted-foreground",
-                      )}
-                      title="Saldo correndo"
-                    >
-                      saldo {formatCurrency(r.saldo)}
-                    </span>
-                  )}
+                    </div>
+                  </div>
+
+                  {/* Divisor sutil */}
+                  <div className="w-px shrink-0 self-stretch bg-border/60" aria-hidden />
+
+                  {/* Bloco direito: saldo do dia com mesma escala tipográfica */}
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    {hasActivity || r.hasOverride ? (
+                      <>
+                        <span
+                          className={cn(
+                            "text-lg font-semibold tabular-nums tracking-tight",
+                            negative
+                              ? "text-rose-600 dark:text-rose-400"
+                              : r.isFuture
+                                ? "text-foreground/60"
+                                : "text-foreground/90",
+                          )}
+                          title="Saldo correndo"
+                        >
+                          {formatCurrency(r.saldo)}
+                        </span>
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          saldo
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          className="text-lg font-semibold tabular-nums tracking-tight text-muted-foreground/40"
+                          aria-hidden
+                        >
+                          —
+                        </span>
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                          saldo
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {/* Transactions row */}
