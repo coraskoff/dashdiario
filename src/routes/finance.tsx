@@ -679,7 +679,7 @@ function Pulse({
               key={r.date}
               ref={r.isToday ? todayRef : undefined}
               className={cn(
-                "relative grid grid-cols-[56px_1fr] gap-3 px-4 py-3 transition-colors",
+                "relative grid grid-cols-[44px_1fr] gap-2 px-3 py-3 transition-colors sm:grid-cols-[56px_1fr] sm:gap-3 sm:px-4",
                 r.isToday && "bg-primary/[0.04]",
                 r.isFuture && "opacity-60",
                 !isLast && "border-b border-border/40",
@@ -728,7 +728,7 @@ function Pulse({
               {/* Right: content */}
               <div className="min-w-0">
                 {/* Top row: dois blocos com mesmo peso visual — gasto | saldo */}
-                <div className="flex items-stretch gap-4">
+                <div className="flex items-stretch gap-3 sm:gap-4">
                   {/* Bloco esquerdo: gasto + delta vs meta */}
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <DiarioInline
@@ -737,7 +737,7 @@ function Pulse({
                       suggested={suggestedDaily}
                       onCommit={(v) => onUpdateDiario(r.date, v === 0 ? null : v)}
                     />
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
                         gasto
                       </span>
@@ -764,40 +764,24 @@ function Pulse({
                   {/* Divisor sutil */}
                   <div className="w-px shrink-0 self-stretch bg-border/60" aria-hidden />
 
-                  {/* Bloco direito: saldo do dia com mesma escala tipográfica */}
+                  {/* Bloco direito: saldo do dia — sempre visível, mesma escala */}
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    {hasActivity || r.hasOverride ? (
-                      <>
-                        <span
-                          className={cn(
-                            "text-lg font-semibold tabular-nums tracking-tight",
-                            negative
-                              ? "text-rose-600 dark:text-rose-400"
-                              : r.isFuture
-                                ? "text-foreground/60"
-                                : "text-foreground/90",
-                          )}
-                          title="Saldo correndo"
-                        >
-                          {formatCurrency(r.saldo)}
-                        </span>
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          saldo
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span
-                          className="text-lg font-semibold tabular-nums tracking-tight text-muted-foreground/40"
-                          aria-hidden
-                        >
-                          —
-                        </span>
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
-                          saldo
-                        </span>
-                      </>
-                    )}
+                    <span
+                      className={cn(
+                        "truncate text-lg font-semibold tabular-nums tracking-tight",
+                        negative
+                          ? "text-rose-600 dark:text-rose-400"
+                          : r.isFuture
+                            ? "text-foreground/60"
+                            : "text-foreground/90",
+                      )}
+                      title="Saldo correndo"
+                    >
+                      {formatCurrency(r.saldo)}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      saldo
+                    </span>
                   </div>
                 </div>
 
