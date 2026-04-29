@@ -28,6 +28,7 @@ import {
   buildDayRows,
   buildYearProjection,
   currentMonth,
+  daysInMonth,
   formatCurrency,
   formatCurrencyCompact,
   formatDayLabel,
@@ -164,15 +165,17 @@ function FinancePage() {
         onToday={() => setMonth(currentMonth())}
       />
 
-      <MonthConfigCard
+      <HeroCard
         month={month}
         config={monthConfig}
-        onSave={(variable) =>
+        summary={summary}
+        openingBalance={openingBalance}
+        onSaveVariable={(variable) =>
           updateMonthMutation.mutate({ month, variable_amount: variable })
         }
       />
 
-      <SummaryCard
+      <SecondaryStats
         summary={summary}
         openingBalance={openingBalance}
         onOpenEntradas={() => setPanel("entrada")}
@@ -240,15 +243,19 @@ function Header({
   );
 }
 
-/* ---------- month config ---------- */
-function MonthConfigCard({
+/* ---------- hero: projeção + ritmo ---------- */
+function HeroCard({
   month,
   config,
-  onSave,
+  summary,
+  openingBalance,
+  onSaveVariable,
 }: {
   month: string;
   config: FinanceMonth | undefined;
-  onSave: (variable: number) => void;
+  summary: ReturnType<typeof summarizeMonth>;
+  openingBalance: number;
+  onSaveVariable: (variable: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -259,60 +266,197 @@ function MonthConfigCard({
     setDraft(formatInput(variable));
   }, [variable, editing]);
 
+  // Projeção fim do mês = summary.closingBalance (já considera diário sugerido nos dias futuros)
+  const projected = summary.closingBalance;
+  // Meta: terminar o mês tendo gasto exatamente o variável planejado.
+  // Delta = variável total - diário efetivo (positivo = abaixo da meta / economizou)
+  const metaDelta = variable - summary.totalDiario;
+  const aboveMeta = metaDelta >= 0;
+  const isProjPositive = projected >= 0;
+
+  // Tempo decorrido & gasto real (apenas dias passados/hoje)
+  const today = todayIso();
+  const monthPrefix = month;
+  const totalDays = daysInMonth(month);
+  // Quantos dias decorridos no mês visível (clamp 0..totalDays)
+  let elapsedDays = totalDays;
+  if (today.startsWith(monthPrefix)) {
+    elapsedDays = Number(today.split("-")[2]);
+  } else if (today < monthPrefix + "-01") {
+    elapsedDays = 0;
+  }
+  const elapsedRatio = totalDays > 0 ? elapsedDays / totalDays : 0;
+  // Gasto real até hoje = variável proporcional consumido (usa diário efetivo dos dias passados).
+  // Como buildDayRows já distribui, aproximamos com diário sugerido * elapsedDays + ajustes.
+  // Para fidelidade: usamos summary.totalDiario - (suggested * diasFuturos).
+  const remainingDays = Math.max(0, totalDays - elapsedDays);
+  const suggestedFuture = daily * remainingDays;
+  const spentReal = Math.max(0, summary.totalDiario - suggestedFuture);
+  const targetProportional = variable * elapsedRatio;
+  const spentRatio = variable > 0 ? Math.min(1, spentReal / variable) : 0;
+  const targetRatio = variable > 0 ? Math.min(1, elapsedRatio) : 0;
+  const overPace = spentReal > targetProportional + 0.005;
+
+  const pctMonth = Math.round(elapsedRatio * 100);
+  const pctVar = variable > 0 ? Math.round((spentReal / variable) * 100) : 0;
+
   return (
-    <div className="rounded-xl border bg-card p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">
-            Variável do mês
+    <section className="overflow-hidden rounded-xl border bg-card">
+      <div className="grid gap-px bg-border md:grid-cols-2">
+        {/* Bloco esquerdo: projeção */}
+        <div className="bg-card p-5 md:p-6">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            Projeção de saldo — fim do mês
           </p>
-          {editing ? (
-            <div className="flex items-center gap-2">
-              <span className="text-lg text-muted-foreground">R$</span>
-              <Input
-                autoFocus
-                inputMode="decimal"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    onSave(parseAmount(draft));
+          <p
+            className={cn(
+              "mt-2 text-4xl font-semibold tracking-tight tabular-nums md:text-5xl",
+              isProjPositive
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-rose-600 dark:text-rose-400",
+            )}
+          >
+            {formatCurrency(projected)}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {variable > 0 && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums",
+                  aboveMeta
+                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                    : "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+                )}
+              >
+                {aboveMeta ? "↑" : "↓"} {formatCurrency(Math.abs(metaDelta))}{" "}
+                {aboveMeta ? "abaixo da meta" : "acima da meta"}
+              </span>
+            )}
+            <span className="text-xs text-muted-foreground">se mantiver o ritmo atual</span>
+          </div>
+
+          {/* Contexto: variável (editável) + diário sugerido */}
+          <div className="mt-5 flex items-center gap-4 border-t pt-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <span className="uppercase tracking-wide">Variável</span>
+              {editing ? (
+                <Input
+                  autoFocus
+                  inputMode="decimal"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      onSaveVariable(parseAmount(draft));
+                      setEditing(false);
+                    } else if (e.key === "Escape") {
+                      setEditing(false);
+                    }
+                  }}
+                  onBlur={() => {
+                    onSaveVariable(parseAmount(draft));
                     setEditing(false);
-                  } else if (e.key === "Escape") {
-                    setEditing(false);
-                  }
-                }}
-                onBlur={() => {
-                  onSave(parseAmount(draft));
-                  setEditing(false);
-                }}
-                className="h-9 w-32 text-lg"
-              />
+                  }}
+                  className="h-7 w-24 text-xs"
+                />
+              ) : (
+                <button
+                  onClick={() => setEditing(true)}
+                  className="group inline-flex items-center gap-1 font-medium text-foreground tabular-nums hover:text-primary"
+                >
+                  {formatCurrency(variable)}
+                  <Pencil className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" />
+                </button>
+              )}
             </div>
-          ) : (
-            <button
-              onClick={() => setEditing(true)}
-              className="group flex items-center gap-2 text-2xl font-semibold tracking-tight hover:text-primary"
-            >
-              {formatCurrency(variable)}
-              <Pencil className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-60" />
-            </button>
-          )}
+            <span className="text-border">•</span>
+            <div className="flex items-center gap-1.5">
+              <span className="uppercase tracking-wide">Diário</span>
+              <span className="font-medium text-foreground tabular-nums">
+                {formatCurrency(daily)}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="text-right">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Diário sugerido</p>
-          <p className="text-2xl font-semibold tracking-tight">{formatCurrency(daily)}</p>
+
+        {/* Bloco direito: gasto vs tempo */}
+        <div className="bg-card p-5 md:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Gasto vs tempo decorrido
+            </p>
+            {variable > 0 && (
+              <p className="text-xs tabular-nums text-muted-foreground">
+                <span className="font-medium text-foreground">{pctMonth}%</span> do mês /{" "}
+                <span
+                  className={cn(
+                    "font-medium",
+                    overPace
+                      ? "text-rose-600 dark:text-rose-400"
+                      : "text-emerald-600 dark:text-emerald-400",
+                  )}
+                >
+                  {pctVar}%
+                </span>{" "}
+                do variável
+              </p>
+            )}
+          </div>
+
+          {/* Barra */}
+          <div className="mt-4">
+            <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all",
+                  overPace ? "bg-rose-500" : "bg-emerald-500",
+                )}
+                style={{ width: `${spentRatio * 100}%` }}
+              />
+              {/* Linha vertical da meta proporcional */}
+              {variable > 0 && (
+                <span
+                  aria-hidden
+                  className="absolute top-[-3px] h-[calc(100%+6px)] w-px bg-foreground/70"
+                  style={{ left: `${targetRatio * 100}%` }}
+                />
+              )}
+            </div>
+
+            {/* Labels */}
+            <div className="mt-2 flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
+              <span>R$ 0</span>
+              <span className="text-foreground/80">
+                Meta proporcional {formatCurrencyCompact(targetProportional)}
+              </span>
+              <span>{formatCurrencyCompact(variable)}</span>
+            </div>
+          </div>
+
+          {/* Legenda */}
+          <div className="mt-4 flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-sm",
+                  overPace ? "bg-rose-500" : "bg-emerald-500",
+                )}
+              />
+              Gasto real ({formatCurrencyCompact(spentReal)})
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-px bg-foreground/70" />
+              Meta proporcional ao dia
+            </span>
+          </div>
         </div>
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">
-        Sugestão automática dividindo a variável pelos dias do mês.
-      </p>
-    </div>
+    </section>
   );
 }
 
-/* ---------- summary (clicável) ---------- */
-function SummaryCard({
+/* ---------- secondary stats row ---------- */
+function SecondaryStats({
   summary,
   openingBalance,
   onOpenEntradas,
@@ -324,7 +468,7 @@ function SummaryCard({
   onOpenSaidas: () => void;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-5">
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-4">
       <Stat label="Saldo inicial" value={openingBalance} />
       <StatButton
         label="Entradas"
@@ -338,12 +482,10 @@ function SummaryCard({
         tone="negative"
         onClick={onOpenSaidas}
       />
-      <Stat label="Diário" value={summary.totalDiario} tone="negative" />
       <Stat
         label="Performance"
         value={summary.performance}
         tone={summary.performance >= 0 ? "positive" : "negative"}
-        emphasize
       />
     </div>
   );
