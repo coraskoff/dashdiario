@@ -28,6 +28,7 @@ import {
   buildDayRows,
   buildYearProjection,
   currentMonth,
+  daysInMonth,
   formatCurrency,
   formatCurrencyCompact,
   formatDayLabel,
