@@ -423,12 +423,18 @@ function Pulse({
   onUpdateDiario: (date: string, value: number | null) => void;
   onOpenKind: (k: PanelKind) => void;
 }) {
-  // Sparkline range
-  const balances = rows.map((r) => r.saldo);
-  const min = Math.min(0, ...balances);
-  const max = Math.max(0, ...balances);
-  const range = max - min || 1;
   const todayRef = useRef<HTMLLIElement>(null);
+
+  // Insight: comparar gasto diário acumulado vs meta acumulada (apenas dias passados + hoje)
+  const elapsed = rows.filter((r) => !r.isFuture);
+  const spentSoFar = elapsed.reduce((s, r) => s + r.diario, 0);
+  const targetSoFar = elapsed.reduce((s, r) => s + suggestedDaily, 0);
+  const insightDelta = spentSoFar - targetSoFar; // > 0 = acima da meta
+  const remainingDays = rows.filter((r) => r.isFuture).length;
+  const totalTarget = rows.reduce((s, r) => s + suggestedDaily, 0);
+  const remainingBudget = totalTarget - spentSoFar;
+  const recalibrated = remainingDays > 0 ? remainingBudget / remainingDays : 0;
+  const isOver = insightDelta > 0.5;
 
   useEffect(() => {
     if (todayRef.current) {
@@ -455,18 +461,83 @@ function Pulse({
         </div>
       </div>
 
+      {elapsed.length > 0 && suggestedDaily > 0 && (
+        <div
+          className={cn(
+            "flex items-start gap-3 border-b px-4 py-3",
+            isOver
+              ? "bg-rose-500/10 text-rose-900 dark:text-rose-200"
+              : "bg-emerald-500/10 text-emerald-900 dark:text-emerald-200",
+          )}
+        >
+          <span
+            className={cn(
+              "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
+              isOver ? "bg-rose-500/20" : "bg-emerald-500/20",
+            )}
+          >
+            {isOver ? (
+              <AlertTriangle className="h-3.5 w-3.5" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+          </span>
+          <div className="min-w-0 text-xs leading-relaxed">
+            {isOver ? (
+              <>
+                Você está{" "}
+                <strong className="font-semibold tabular-nums">
+                  {formatCurrency(insightDelta)}
+                </strong>{" "}
+                acima da meta no período.
+                {remainingDays > 0 && recalibrated > 0 && (
+                  <>
+                    {" "}Para equilibrar até o fim do mês, gaste no máximo{" "}
+                    <strong className="font-semibold tabular-nums">
+                      {formatCurrency(recalibrated)}
+                    </strong>{" "}
+                    por dia nos {remainingDays} dias restantes.
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                Você está{" "}
+                <strong className="font-semibold tabular-nums">
+                  {formatCurrency(Math.abs(insightDelta))}
+                </strong>{" "}
+                abaixo da meta. Continua no ritmo —
+                {remainingDays > 0 && recalibrated > 0 ? (
+                  <>
+                    {" "}folga de{" "}
+                    <strong className="font-semibold tabular-nums">
+                      {formatCurrency(recalibrated)}
+                    </strong>
+                    /dia pelos próximos {remainingDays} dias.
+                  </>
+                ) : (
+                  <> bom controle.</>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <ul className="relative">
         {rows.map((r, i) => {
-          const sparkPct = ((r.saldo - min) / range) * 100;
           const negative = r.saldo < 0;
           const hasActivity = r.transactions.length > 0;
           const isLast = i === rows.length - 1;
+          const dayDelta = r.diario - suggestedDaily;
+          const deltaTone: "over" | "under" | "neutral" =
+            Math.abs(dayDelta) < 0.005 ? "neutral" : dayDelta > 0 ? "over" : "under";
           return (
             <li
               key={r.date}
               ref={r.isToday ? todayRef : undefined}
               className={cn(
-                "relative grid grid-cols-[56px_1fr] gap-3 px-4 py-2.5 transition-colors",
+                "relative grid grid-cols-[56px_1fr] gap-3 px-4 py-3 transition-colors",
                 r.isToday && "bg-primary/[0.04]",
                 r.isFuture && "opacity-60",
                 !isLast && "border-b border-border/40",
@@ -514,31 +585,50 @@ function Pulse({
 
               {/* Right: content */}
               <div className="min-w-0">
-                {/* Top row: saldo + sparkline */}
-                <div className="flex items-baseline justify-between gap-3">
-                  <div className="flex items-baseline gap-2">
+                {/* Top row: gasto diário (protagonista) + delta pill + saldo (secundário) */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <DiarioInline
+                    value={r.diario}
+                    isOverride={r.hasOverride}
+                    suggested={suggestedDaily}
+                    onCommit={(v) => onUpdateDiario(r.date, v === 0 ? null : v)}
+                  />
+                  {suggestedDaily > 0 && (
                     <span
                       className={cn(
-                        "text-base font-semibold tabular-nums tracking-tight",
-                        negative && "text-rose-600 dark:text-rose-400",
-                        !negative && r.isFuture && "text-muted-foreground",
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums",
+                        deltaTone === "over" &&
+                          "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+                        deltaTone === "under" &&
+                          "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+                        deltaTone === "neutral" && "bg-muted text-muted-foreground",
                       )}
+                      title={`Meta diária: ${formatCurrency(suggestedDaily)}`}
                     >
-                      {formatCurrency(r.saldo)}
+                      {deltaTone === "neutral"
+                        ? "no alvo"
+                        : `${dayDelta > 0 ? "+" : "−"}${formatCurrencyCompact(Math.abs(dayDelta))} vs meta`}
                     </span>
-                    <DiarioInline
-                      value={r.diario}
-                      isOverride={r.hasOverride}
-                      suggested={suggestedDaily}
-                      onCommit={(v) => onUpdateDiario(r.date, v === 0 ? null : v)}
-                    />
-                  </div>
-                  <Sparkline pct={sparkPct} negative={negative} />
+                  )}
+                  {(hasActivity || r.hasOverride) && (
+                    <span
+                      className={cn(
+                        "ml-auto inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] tabular-nums",
+                        negative
+                          ? "border-rose-500/30 text-rose-600 dark:text-rose-400"
+                          : "border-border text-muted-foreground",
+                        r.isFuture && "text-muted-foreground",
+                      )}
+                      title="Saldo correndo"
+                    >
+                      saldo {formatCurrency(r.saldo)}
+                    </span>
+                  )}
                 </div>
 
                 {/* Transactions row */}
                 {hasActivity && (
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {r.transactions.map((t) => (
                       <button
                         key={t.id}
