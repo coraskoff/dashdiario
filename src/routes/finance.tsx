@@ -304,13 +304,13 @@ function HeroCard({
     <section className="overflow-hidden rounded-xl border bg-card">
       <div className="grid gap-px bg-border md:grid-cols-2">
         {/* Bloco esquerdo: projeção */}
-        <div className="bg-card p-5 md:p-6">
+        <div className="min-w-0 bg-card p-4 md:p-6">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
             Projeção de saldo — fim do mês
           </p>
           <p
             className={cn(
-              "mt-2 text-4xl font-semibold tracking-tight tabular-nums md:text-5xl",
+              "mt-2 break-words text-3xl font-semibold leading-tight tracking-tight tabular-nums sm:text-4xl md:text-5xl",
               isProjPositive
                 ? "text-emerald-600 dark:text-emerald-400"
                 : "text-rose-600 dark:text-rose-400",
@@ -336,7 +336,7 @@ function HeroCard({
           </div>
 
           {/* Contexto: variável (editável) + diário sugerido */}
-          <div className="mt-5 flex items-center gap-4 border-t pt-3 text-xs text-muted-foreground">
+          <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 border-t pt-3 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <span className="uppercase tracking-wide">Variável</span>
               {editing ? (
@@ -369,7 +369,7 @@ function HeroCard({
                 </button>
               )}
             </div>
-            <span className="text-border">•</span>
+            <span className="hidden text-border sm:inline">•</span>
             <div className="flex items-center gap-1.5">
               <span className="uppercase tracking-wide">Diário</span>
               <span className="font-medium text-foreground tabular-nums">
@@ -380,13 +380,13 @@ function HeroCard({
         </div>
 
         {/* Bloco direito: gasto vs tempo */}
-        <div className="bg-card p-5 md:p-6">
-          <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 bg-card p-4 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Gasto vs tempo decorrido
             </p>
             {variable > 0 && (
-              <p className="text-xs tabular-nums text-muted-foreground">
+              <p className="text-[11px] tabular-nums text-muted-foreground sm:text-xs">
                 <span className="font-medium text-foreground">{pctMonth}%</span> do mês /{" "}
                 <span
                   className={cn(
@@ -424,17 +424,17 @@ function HeroCard({
             </div>
 
             {/* Labels */}
-            <div className="mt-2 flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
+            <div className="mt-2 flex items-center justify-between gap-2 text-[10px] tabular-nums text-muted-foreground sm:text-[11px]">
               <span>R$ 0</span>
-              <span className="text-foreground/80">
-                Meta proporcional {formatCurrencyCompact(targetProportional)}
+              <span className="truncate text-foreground/80">
+                Meta {formatCurrencyCompact(targetProportional)}
               </span>
               <span>{formatCurrencyCompact(variable)}</span>
             </div>
           </div>
 
           {/* Legenda */}
-          <div className="mt-4 flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground">
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <span
                 className={cn(
@@ -446,7 +446,7 @@ function HeroCard({
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-px bg-foreground/70" />
-              Meta proporcional ao dia
+              Meta ao dia
             </span>
           </div>
         </div>
