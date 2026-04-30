@@ -18,6 +18,7 @@ import type { Bucket, Task, TaskStatus } from "@/modules/tasks/types";
 import {
   bucketDueDate,
   groupByBucket,
+  toIsoDate,
   todayIso,
   tomorrowIso,
   dayAfterTomorrowIso,
@@ -109,6 +110,13 @@ function TasksPage() {
   const weekNoDate = useMemo(
     () => buckets.week.filter((t) => !t.due_date),
     [buckets.week],
+  );
+  const overdueTasks = useMemo(
+    () =>
+      visibleTasks.filter(
+        (t) => t.status === "pending" && !!t.due_date && t.due_date < todayIso(),
+      ),
+    [visibleTasks],
   );
   const tasksByDate = useMemo(() => {
     const map: Record<string, Task[]> = {};
@@ -331,6 +339,7 @@ function TasksPage() {
       {/* "Semana" — horizontal strip on top: macro plan, distinct from daily focus */}
       <WeekStrip
         tasks={weekNoDate}
+        overdueTasks={overdueTasks}
         onAdd={(title) =>
           create.mutate(
             { title, due_date: null, project_id: newTaskProjectId },
@@ -469,17 +478,34 @@ interface ColumnHandlers {
   showProjectDot: boolean;
 }
 
+function relDateLabel(due: string): string {
+  const today = todayIso();
+  if (due === today) return "· hoje";
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  if (due === toIsoDate(d)) return "· ontem";
+  const [, m, day] = due.split("-");
+  return `· ${day}/${m}`;
+}
+
 function WeekStrip({
   tasks,
+  overdueTasks,
   onAdd,
   loading,
   ...handlers
 }: ColumnHandlers & {
   tasks: Task[];
+  overdueTasks: Task[];
   onAdd: (title: string) => void;
   loading: boolean;
 }) {
   const [drag, setDrag] = useState(false);
+  const [activeTab, setActiveTab] = useState<"backlog" | "atrasadas">("backlog");
+
+  const backlogCount = tasks.filter((t) => t.status === "pending").length;
+  const overdueCount = overdueTasks.length;
+
   return (
     <section
       onDragOver={(e) => {
@@ -497,34 +523,110 @@ function WeekStrip({
         drag ? "border-foreground/40 bg-secondary/60" : "border-border"
       }`}
     >
-      <div className="flex items-baseline justify-between gap-4 pb-4">
-        <div className="flex items-baseline gap-3">
-          <h2 className="text-base font-semibold">Sem data</h2>
-          <span className="text-xs text-muted-foreground">
-            o que quero fazer, mas ainda sem dia
-          </span>
+      {/* Segmented control header */}
+      <div className="pb-4">
+        <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted/70 p-0.5">
+          <button
+            onClick={() => setActiveTab("backlog")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-all",
+              activeTab === "backlog"
+                ? "bg-card font-medium text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Backlog
+            {backlogCount > 0 && (
+              <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                {backlogCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("atrasadas")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-all",
+              activeTab === "atrasadas"
+                ? "bg-card font-medium text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Atrasadas
+            {overdueCount > 0 && (
+              <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold tabular-nums text-white">
+                {overdueCount}
+              </span>
+            )}
+          </button>
         </div>
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {tasks.filter((t) => t.status === "pending").length}
-        </span>
       </div>
 
-      <QuickAdd placeholder="Anotar uma ideia, meta ou recado…" onAdd={onAdd} />
+      {/* Backlog tab — unchanged behavior */}
+      {activeTab === "backlog" && (
+        <>
+          <QuickAdd placeholder="Anotar uma ideia, meta ou recado…" onAdd={onAdd} />
+          <div className="mt-4 flex flex-wrap gap-2">
+            {loading && <Pulse size={10} className="ml-1" />}
+            {!loading && backlogCount === 0 && (
+              <span className="text-sm text-muted-foreground">
+                Tudo já tem dia. Use aqui para guardar o que vem sem hora.
+              </span>
+            )}
+            {tasks
+              .filter((t) => t.status === "pending")
+              .map((t) => (
+                <WeekChip key={t.id} task={t} {...handlers} />
+              ))}
+          </div>
+        </>
+      )}
 
-      {/* Horizontal flowing chips — pending only; completed live in the archive sheet */}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {loading && <Pulse size={10} className="ml-1" />}
-        {!loading && tasks.filter((t) => t.status === "pending").length === 0 && (
-          <span className="text-sm text-muted-foreground">
-            Tudo já tem dia. Use aqui para guardar o que vem sem hora.
-          </span>
-        )}
-        {tasks
-          .filter((t) => t.status === "pending")
-          .map((t) => (
-            <WeekChip key={t.id} task={t} {...handlers} />
-          ))}
-      </div>
+      {/* Atrasadas tab */}
+      {activeTab === "atrasadas" && (
+        <div className="flex flex-wrap gap-2">
+          {overdueCount === 0 ? (
+            <span className="text-sm text-muted-foreground">Nenhuma tarefa atrasada.</span>
+          ) : (
+            overdueTasks.map((t) => {
+              const project = t.project_id ? handlers.projectsById[t.project_id] : null;
+              return (
+                <div
+                  key={t.id}
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("text/task-id", t.id)}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest("button, a, [role='menuitem']")) return;
+                    handlers.onOpen(t);
+                  }}
+                  className="group flex max-w-full cursor-pointer items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-2 text-sm transition-all hover:border-foreground/30 hover:shadow-sm"
+                >
+                  <button
+                    onClick={() => handlers.onToggle(t)}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border hover:border-foreground"
+                    aria-label="Concluir"
+                  />
+                  {handlers.showProjectDot && project && (
+                    <span
+                      aria-hidden
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ background: projectColor(project) }}
+                      title={project.name}
+                    />
+                  )}
+                  <span className="truncate px-0.5">{t.title}</span>
+                  {t.due_date && (
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {relDateLabel(t.due_date)}
+                    </span>
+                  )}
+                  <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </section>
   );
 }
