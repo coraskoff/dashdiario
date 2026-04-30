@@ -93,6 +93,7 @@ function FinancePage() {
   const qc = useQueryClient();
   const [month, setMonth] = useState<string>(currentMonth());
   const [panel, setPanel] = useState<PanelKind>(null);
+  const [diarioQuickOpen, setDiarioQuickOpen] = useState(false);
 
   const monthsQuery = useQuery({ queryKey: ["finance", "months"], queryFn: fetchAllMonths });
   const daysQuery = useQuery({ queryKey: ["finance", "days"], queryFn: fetchAllDays });
@@ -173,6 +174,13 @@ function FinancePage() {
 
   const suggested = suggestedDaily(monthConfig?.variable_amount ?? 0, month);
 
+  const openNew = (k: "entrada" | "saida" | "diario") => {
+    if (k === "diario") setDiarioQuickOpen(true);
+    else setPanel(k);
+  };
+
+  const todayRow = rows.find((r) => r.isToday) ?? rows[rows.length - 1];
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-5 px-3 py-5 sm:px-4 md:space-y-6 md:px-8 md:py-6">
       <Header
@@ -180,6 +188,7 @@ function FinancePage() {
         onPrev={() => setMonth(shiftMonth(month, -1))}
         onNext={() => setMonth(shiftMonth(month, 1))}
         onToday={() => setMonth(currentMonth())}
+        onNew={openNew}
       />
 
       <HeroCard
@@ -218,6 +227,24 @@ function FinancePage() {
         onSave={(input) => upsertTxMutation.mutate(input)}
         onDelete={(id) => deleteTxMutation.mutate(id)}
       />
+
+      <DiarioQuickEdit
+        open={diarioQuickOpen}
+        onClose={() => setDiarioQuickOpen(false)}
+        date={todayRow?.date ?? todayIso()}
+        currentValue={todayRow?.diario ?? suggested}
+        suggested={suggested}
+        hasOverride={todayRow?.hasOverride ?? false}
+        onSave={(value) => {
+          updateDiarioMutation.mutate({
+            date: todayRow?.date ?? todayIso(),
+            diario_override: value,
+          });
+          setDiarioQuickOpen(false);
+        }}
+      />
+
+      <MobileNewFab onNew={openNew} />
     </div>
   );
 }
