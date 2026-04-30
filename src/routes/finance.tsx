@@ -1501,6 +1501,17 @@ function ProjectionCard({
             ._proj-fut   { animation:_proj-fade .6s ease .85s both; }
             ._proj-area  { animation:_proj-fade .9s ease both; }
             ._proj-ring  { transform-box:fill-box; transform-origin:center; animation:_proj-ring 2.2s ease-in-out 1.5s infinite; }
+            ._tt-bg      { fill:#ffffff; stroke:#e2e8f0; }
+            ._tt-title   { fill:#0f172a; }
+            ._tt-label   { fill:#64748b; }
+            ._tt-val-pos { fill:#0f172a; font-weight:700; }
+            ._tt-val-neg { fill:#ef4444; font-weight:700; }
+            @media (prefers-color-scheme:dark) {
+              ._tt-bg    { fill:#1e293b; stroke:#334155; }
+              ._tt-title { fill:#f1f5f9; }
+              ._tt-label { fill:#94a3b8; }
+              ._tt-val-pos { fill:#f1f5f9; }
+            }
           `}</style>
         </defs>
 
@@ -1599,19 +1610,16 @@ function ProjectionCard({
               <circle cx={p.x} cy={p.y} r={16} fill="transparent" />
               <g className="pointer-events-none opacity-0 transition-opacity duration-150 group-hover/pt:opacity-100">
                 <rect x={ttX} y={ttY} width={ttW} height={ttH} rx={8}
-                  strokeWidth={1} filter="drop-shadow(0 4px 14px rgba(0,0,0,0.13))"
-                  style={{ fill: "hsl(var(--card))", stroke: "hsl(var(--border))" }} />
-                <text x={ttX + 12} y={ttY + 20} fontSize={10} fontWeight="600"
-                  style={{ fill: "hsl(var(--foreground))" }}>
+                  strokeWidth={1} className="_tt-bg"
+                  style={{ filter: "drop-shadow(0 4px 14px rgba(0,0,0,0.13))" }} />
+                <text x={ttX + 12} y={ttY + 20} fontSize={10} className="_tt-title">
                   {p.label}
                 </text>
-                <text x={ttX + 12} y={ttY + 39} fontSize={9}
-                  style={{ fill: "hsl(var(--muted-foreground))" }}>
+                <text x={ttX + 12} y={ttY + 39} fontSize={9} className="_tt-label">
                   Saldo acumulado
                 </text>
-                <text x={ttX + ttW - 12} y={ttY + 39} fontSize={11} fontWeight="700"
-                  textAnchor="end"
-                  style={{ fill: isNeg ? "hsl(var(--destructive))" : "hsl(var(--foreground))" }}>
+                <text x={ttX + ttW - 12} y={ttY + 39} fontSize={11}
+                  textAnchor="end" className={isNeg ? "_tt-val-neg" : "_tt-val-pos"}>
                   {formatCurrency(bal)}
                 </text>
               </g>
