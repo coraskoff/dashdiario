@@ -14,6 +14,7 @@ import {
   Plus,
   Repeat2,
   Trash2,
+  CalendarDays,
 } from "lucide-react";
 
 import {
@@ -51,6 +52,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
