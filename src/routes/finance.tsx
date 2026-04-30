@@ -373,57 +373,70 @@ function NewActionList({
     kind: "entrada" | "saida" | "diario";
     label: string;
     desc: string;
-    Icon: typeof ArrowDownLeft;
-    iconWrap: string;
+    glyph: string;
+    accent: string;
+    hint: string;
   }> = [
     {
       kind: "entrada",
       label: "Entrada",
       desc: "Recebimento ou crédito",
-      Icon: ArrowDownLeft,
-      iconWrap:
-        "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400",
+      glyph: "+",
+      accent: "bg-emerald-500",
+      hint: "E",
     },
     {
       kind: "saida",
       label: "Saída",
       desc: "Pagamento ou despesa",
-      Icon: ArrowUpRight,
-      iconWrap: "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400",
+      glyph: "−",
+      accent: "bg-rose-500",
+      hint: "S",
     },
     {
       kind: "diario",
       label: "Gasto diário",
       desc: "Ajustar diário de hoje",
-      Icon: CalendarDays,
-      iconWrap: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400",
+      glyph: "·",
+      accent: "bg-foreground/40",
+      hint: "D",
     },
   ];
   return (
-    <ul className="flex flex-col gap-1">
-      {items.map(({ kind, label, desc, Icon, iconWrap }) => (
-        <li key={kind}>
+    <ul className="flex flex-col">
+      {items.map(({ kind, label, desc, glyph, accent, hint }, i) => (
+        <li key={kind} className={i > 0 ? "border-t border-border/60" : ""}>
           <button
             type="button"
             onClick={() => onPick(kind)}
             className={cn(
-              "flex w-full items-center gap-3 rounded-md px-2 text-left transition-colors hover:bg-muted",
-              size === "lg" ? "py-3" : "py-2",
+              "group relative flex w-full items-center gap-3 rounded-sm pl-3 pr-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none",
+              size === "lg" ? "py-3.5" : "py-2.5",
             )}
           >
             <span
+              aria-hidden
               className={cn(
-                "flex shrink-0 items-center justify-center rounded-md",
-                iconWrap,
-                size === "lg" ? "h-10 w-10" : "h-8 w-8",
+                "absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100",
+                accent,
+              )}
+            />
+            <span
+              aria-hidden
+              className={cn(
+                "flex shrink-0 items-center justify-center font-mono text-foreground/70 tabular-nums leading-none",
+                size === "lg" ? "h-6 w-5 text-xl" : "h-5 w-4 text-base",
               )}
             >
-              <Icon className={size === "lg" ? "h-5 w-5" : "h-4 w-4"} />
+              {glyph}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">{label}</span>
+              <span className="block text-[13px] font-medium tracking-tight">{label}</span>
               <span className="block text-[11px] text-muted-foreground">{desc}</span>
             </span>
+            <kbd className="hidden md:inline-flex h-5 min-w-5 items-center justify-center rounded border border-border/70 px-1 font-mono text-[10px] text-muted-foreground/70">
+              {hint}
+            </kbd>
           </button>
         </li>
       ))}
