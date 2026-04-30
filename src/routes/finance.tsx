@@ -1398,20 +1398,17 @@ function ProjectionCard({
   const decemberBalance = projection[projection.length - 1]?.closingBalance ?? 0;
   const negativeCount = projection.filter((p) => p.closingBalance < 0).length;
 
-  // SVG chart geometry
-  const W = 540;
-  const H = 160;
-  const PL = 62; // left pad for Y labels
-  const PR = 8;
-  const PT = 10;
-  const PB = 20; // bottom pad for X labels
+  const W = 540, H = 180, PL = 66, PR = 12, PT = 16, PB = 26;
   const plotW = W - PL - PR;
   const plotH = H - PT - PB;
   const n = projection.length;
 
   const allVals = projection.map((p) => p.closingBalance);
-  const minVal = Math.min(0, ...allVals);
-  const maxVal = Math.max(0, ...allVals);
+  const rawMin = Math.min(...allVals);
+  const rawMax = Math.max(...allVals);
+  const vPad = ((rawMax - rawMin) || 200) * 0.15;
+  const minVal = Math.min(0, rawMin) - vPad;
+  const maxVal = rawMax + vPad;
   const valRange = maxVal - minVal || 1;
 
   const toX = (i: number) => PL + (i / Math.max(n - 1, 1)) * plotW;
@@ -1422,56 +1419,102 @@ function ProjectionCard({
 
   const pastPts = pts.filter((p) => p.month <= highlightMonth);
   const futurePts = pts.filter((p) => p.month >= highlightMonth);
-  const pathD = (points: typeof pts) =>
-    points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
 
-  // 5 evenly-spaced Y ticks
-  const yTicks = Array.from({ length: 5 }, (_, i) => minVal + (i / 4) * valRange);
+  // Smooth cubic-bezier path (horizontal tangents)
+  function smoothD(points: typeof pts) {
+    if (points.length < 2) return "";
+    let d = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+    for (let i = 1; i < points.length; i++) {
+      const px = points[i - 1].x, py = points[i - 1].y;
+      const cx = points[i].x, cy = points[i].y;
+      const mx = ((px + cx) / 2).toFixed(1);
+      d += ` C${mx},${py.toFixed(1)} ${mx},${cy.toFixed(1)} ${cx.toFixed(1)},${cy.toFixed(1)}`;
+    }
+    return d;
+  }
+
+  // Area path: curve + close to bottom of plot
+  function areaD(points: typeof pts) {
+    if (points.length < 2) return "";
+    const bot = (PT + plotH).toFixed(1);
+    return `${smoothD(points)} L${points[points.length - 1].x.toFixed(1)},${bot} L${points[0].x.toFixed(1)},${bot} Z`;
+  }
+
+  const yTicks = Array.from({ length: 4 }, (_, i) => minVal + (i / 3) * valRange);
+  const curPt = pts.find((p) => p.month === highlightMonth);
 
   return (
     <div className="rounded-xl border bg-card p-5">
       <div className="mb-4">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Projeção</p>
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Projeção anual</p>
         <h2 className="text-base font-semibold">Saldo até dezembro</h2>
       </div>
 
       {/* 3 summary cards */}
       <div className="mb-5 grid grid-cols-3 gap-3">
-        <div className="rounded-lg border bg-muted/30 p-3">
+        <div className={cn("rounded-lg border p-3",
+          currentBalance >= 0 ? "border-l-[3px] border-l-emerald-500" : "border-l-[3px] border-l-rose-500")}>
           <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Saldo atual</p>
           <p className={cn("mt-1 text-lg font-semibold tabular-nums tracking-tight",
             currentBalance < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
             {formatCurrencyCompact(currentBalance)}
           </p>
         </div>
-        <div className="rounded-lg border bg-muted/30 p-3">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Projeção dezembro</p>
+        <div className={cn("rounded-lg border p-3",
+          decemberBalance >= 0 ? "border-l-[3px] border-l-emerald-500" : "border-l-[3px] border-l-rose-500")}>
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Dezembro</p>
           <p className={cn("mt-1 text-lg font-semibold tabular-nums tracking-tight",
             decemberBalance < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
             {formatCurrencyCompact(decemberBalance)}
           </p>
         </div>
-        <div className="rounded-lg border bg-muted/30 p-3">
+        <div className={cn("rounded-lg border p-3",
+          negativeCount === 0 ? "border-l-[3px] border-l-emerald-500" : "border-l-[3px] border-l-rose-500")}>
           <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Meses negativos</p>
           <p className={cn("mt-1 text-lg font-semibold tabular-nums tracking-tight",
             negativeCount > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
-            {negativeCount} de {projection.length}
+            {negativeCount} / {projection.length}
           </p>
         </div>
       </div>
 
-      {/* SVG line chart — zero external dependencies */}
+      {/* SVG line chart */}
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible" aria-hidden>
+        <defs>
+          <linearGradient id="proj-g-past" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="hsl(var(--foreground))" stopOpacity="0.12" />
+            <stop offset="100%" stopColor="hsl(var(--foreground))" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="proj-g-future" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.12" />
+            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+          </linearGradient>
+          <style>{`
+            @keyframes _proj-draw { from { stroke-dashoffset: 2000 } to { stroke-dashoffset: 0 } }
+            @keyframes _proj-fade { from { opacity: 0 } to { opacity: 1 } }
+            @keyframes _proj-dot  { from { opacity: 0 } to { opacity: 1 } }
+            @keyframes _proj-ring {
+              0%,100% { opacity: .55; transform: scale(1); }
+              50%      { opacity: 0;  transform: scale(2.6); }
+            }
+            ._proj-past  { stroke-dasharray:2000; animation:_proj-draw 1.3s cubic-bezier(.4,0,.2,1) forwards; }
+            ._proj-fut   { animation:_proj-fade .6s ease .85s both; }
+            ._proj-area  { animation:_proj-fade .9s ease both; }
+            ._proj-ring  { transform-box:fill-box; transform-origin:center; animation:_proj-ring 2.2s ease-in-out 1.5s infinite; }
+          `}</style>
+        </defs>
 
-        {/* Y-axis grid + labels */}
+        {/* Grid lines */}
         {yTicks.map((v, i) => {
           const y = toY(v);
+          if (y < PT - 2 || y > PT + plotH + 2) return null;
           return (
             <g key={i}>
               <line x1={PL} y1={y} x2={W - PR} y2={y}
-                stroke="hsl(var(--border))" strokeOpacity={0.5} strokeWidth={0.5} />
-              <text x={PL - 5} y={y} dy="0.35em" textAnchor="end" fontSize={9}
-                style={{ fill: "hsl(var(--muted-foreground))" }}>
+                strokeWidth={0.5} strokeDasharray={i > 0 ? "3 3" : undefined}
+                style={{ stroke: "hsl(var(--border))", opacity: 0.5 }} />
+              <text x={PL - 7} y={y} dy="0.35em" textAnchor="end" fontSize={9}
+                style={{ fill: "hsl(var(--muted-foreground))", opacity: 0.75 }}>
                 {formatCurrencyCompact(v)}
               </text>
             </g>
@@ -1481,69 +1524,94 @@ function ProjectionCard({
         {/* Zero reference line */}
         {zeroY >= PT && zeroY <= PT + plotH && (
           <line x1={PL} y1={zeroY} x2={W - PR} y2={zeroY}
-            stroke="hsl(var(--destructive))" strokeOpacity={0.4} strokeWidth={1} />
+            strokeWidth={1} strokeDasharray="4 3"
+            style={{ stroke: "hsl(var(--destructive))", opacity: 0.45 }} />
         )}
 
-        {/* Realized path — solid dark */}
+        {/* Area fills */}
         {pastPts.length > 1 && (
-          <path d={pathD(pastPts)} fill="none" strokeWidth={1.5}
+          <path className="_proj-area" d={areaD(pastPts)} fill="url(#proj-g-past)" />
+        )}
+        {futurePts.length > 1 && (
+          <path className="_proj-area" d={areaD(futurePts)} fill="url(#proj-g-future)"
+            style={{ animationDelay: "0.85s" }} />
+        )}
+
+        {/* Realized path — animated draw-in */}
+        {pastPts.length > 1 && (
+          <path className="_proj-past" d={smoothD(pastPts)} fill="none" strokeWidth={2.5}
             strokeLinecap="round" strokeLinejoin="round"
             style={{ stroke: "hsl(var(--foreground))" }} />
         )}
 
-        {/* Projected path — dashed primary */}
+        {/* Projected path — dashed, fade in */}
         {futurePts.length > 1 && (
-          <path d={pathD(futurePts)} fill="none" strokeWidth={1.5}
-            strokeDasharray="5 4" strokeLinecap="round" strokeLinejoin="round"
+          <path className="_proj-fut" d={smoothD(futurePts)} fill="none" strokeWidth={2}
+            strokeDasharray="6 4" strokeLinecap="round" strokeLinejoin="round"
             style={{ stroke: "hsl(var(--primary))" }} />
         )}
 
         {/* X-axis labels */}
-        {pts.map((p) => (
-          <text key={`x-${p.month}`} x={p.x} y={H - 3} textAnchor="middle" fontSize={9}
-            fontWeight={p.month === highlightMonth ? "600" : "400"}
-            style={{ fill: "hsl(var(--muted-foreground))" }}>
-            {p.label.split(" ")[0].slice(0, 3)}
-          </text>
-        ))}
+        {pts.map((p, i) => {
+          const isHigh = p.month === highlightMonth;
+          const show = n <= 6 || i % 2 === 0 || isHigh || i === n - 1;
+          if (!show) return null;
+          return (
+            <text key={`x-${p.month}`} x={p.x} y={H - 5} textAnchor="middle" fontSize={9}
+              fontWeight={isHigh ? "700" : "400"}
+              style={{ fill: isHigh ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))" }}>
+              {p.label.split(" ")[0].slice(0, 3)}
+            </text>
+          );
+        })}
 
-        {/* Dots layer (below hit areas) */}
-        {pts.map((p) => (
-          <circle key={`dot-${p.month}`}
-            cx={p.x} cy={p.y}
-            r={p.month === highlightMonth ? 4 : 3}
-            style={{ fill: p.month <= highlightMonth ? "hsl(var(--foreground))" : "hsl(var(--primary))" }}
-          />
-        ))}
+        {/* Pulsing ring on current month */}
+        {curPt && (
+          <circle className="_proj-ring" cx={curPt.x} cy={curPt.y} r={5.5}
+            fill="none" strokeWidth={1.5}
+            style={{ stroke: "hsl(var(--primary))" }} />
+        )}
 
-        {/* Hit areas + tooltips (top layer — always above dots) */}
+        {/* Dots — staggered fade-in */}
+        {pts.map((p, i) => {
+          const isHigh = p.month === highlightMonth;
+          const isPast = p.month <= highlightMonth;
+          return (
+            <circle key={`dot-${p.month}`} cx={p.x} cy={p.y}
+              r={isHigh ? 5 : 3.5} strokeWidth={isHigh ? 2.5 : 1.5}
+              style={{
+                fill: "hsl(var(--card))",
+                stroke: isPast ? "hsl(var(--foreground))" : "hsl(var(--primary))",
+                animation: `_proj-dot .3s ease ${0.95 + i * 0.06}s both`,
+              }} />
+          );
+        })}
+
+        {/* Hit areas + tooltips */}
         {pts.map((p) => {
           const bal = p.closingBalance;
-          const ttW = 168;
-          const ttH = 52;
+          const isNeg = bal < 0;
+          const ttW = 180, ttH = 60;
           const ttX = Math.min(Math.max(p.x - ttW / 2, PL), W - PR - ttW);
-          const ttY = p.y - ttH - 12 < PT ? p.y + 14 : p.y - ttH - 12;
+          const ttY = p.y - ttH - 16 < PT ? p.y + 16 : p.y - ttH - 16;
           return (
             <g key={`hit-${p.month}`} className="group/pt">
-              {/* Invisible hit area */}
-              <circle cx={p.x} cy={p.y} r={14} fill="transparent" />
-              {/* Tooltip */}
-              <g className="pointer-events-none opacity-0 transition-opacity duration-100 group-hover/pt:opacity-100">
-                <rect x={ttX} y={ttY} width={ttW} height={ttH} rx={6}
-                  style={{ fill: "hsl(var(--card))", stroke: "hsl(var(--border))" }}
-                  strokeWidth={1}
-                  filter="drop-shadow(0 2px 6px rgba(0,0,0,0.08))" />
-                <text x={ttX + 10} y={ttY + 16} fontSize={10} fontWeight="600"
+              <circle cx={p.x} cy={p.y} r={16} fill="transparent" />
+              <g className="pointer-events-none opacity-0 transition-opacity duration-150 group-hover/pt:opacity-100">
+                <rect x={ttX} y={ttY} width={ttW} height={ttH} rx={8}
+                  strokeWidth={1} filter="drop-shadow(0 4px 14px rgba(0,0,0,0.13))"
+                  style={{ fill: "hsl(var(--card))", stroke: "hsl(var(--border))" }} />
+                <text x={ttX + 12} y={ttY + 20} fontSize={10} fontWeight="600"
                   style={{ fill: "hsl(var(--foreground))" }}>
                   {p.label}
                 </text>
-                <text x={ttX + 10} y={ttY + 33} fontSize={9}
+                <text x={ttX + 12} y={ttY + 39} fontSize={9}
                   style={{ fill: "hsl(var(--muted-foreground))" }}>
                   Saldo acumulado
                 </text>
-                <text x={ttX + ttW - 10} y={ttY + 33} fontSize={9} fontWeight="600"
+                <text x={ttX + ttW - 12} y={ttY + 39} fontSize={11} fontWeight="700"
                   textAnchor="end"
-                  style={{ fill: bal < 0 ? "hsl(var(--destructive))" : "hsl(var(--foreground))" }}>
+                  style={{ fill: isNeg ? "hsl(var(--destructive))" : "hsl(var(--foreground))" }}>
                   {formatCurrency(bal)}
                 </text>
               </g>
@@ -1552,21 +1620,21 @@ function ProjectionCard({
         })}
       </svg>
 
-      {/* Manual legend */}
-      <div className="mt-2 flex items-center gap-5 text-[11px] text-muted-foreground">
+      {/* Legend */}
+      <div className="mt-3 flex items-center gap-5 text-[11px] text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="block h-px w-5 bg-foreground" />
+          <span className="block h-0.5 w-5 rounded-full bg-foreground" />
           Realizado
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="block h-px w-5 shrink-0" style={{
-            backgroundImage: "repeating-linear-gradient(to right,hsl(var(--primary)) 0,hsl(var(--primary)) 4px,transparent 4px,transparent 8px)",
+          <span className="block h-0.5 w-5 shrink-0 rounded-full" style={{
+            backgroundImage: "repeating-linear-gradient(to right,hsl(var(--primary)) 0,hsl(var(--primary)) 5px,transparent 5px,transparent 9px)",
           }} />
           Projetado
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="block h-px w-5 bg-destructive/40" />
-          Linha zero
+          <span className="block h-0.5 w-5 rounded-full" style={{ background: "hsl(var(--destructive)/0.45)" }} />
+          Zero
         </span>
       </div>
     </div>
