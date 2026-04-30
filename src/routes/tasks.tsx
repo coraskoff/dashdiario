@@ -87,10 +87,14 @@ function TasksPage() {
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ["tasks"],
     queryFn: fetchTasks,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
   const { data: projects = [] } = useQuery({
     queryKey: ["projects"],
     queryFn: fetchProjects,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const [activeProject, setActiveProject] = useState<ActiveProject>("all");
@@ -149,8 +153,34 @@ function TasksPage() {
 
   const create = useMutation({
     mutationFn: createTask,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
-    onError: (e: Error) => toast.error(e.message),
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ["tasks"] });
+      const prev = qc.getQueryData<Task[]>(["tasks"]);
+      const now = new Date().toISOString();
+      const optimistic: Task = {
+        id: `tmp-${Math.random().toString(36).slice(2)}`,
+        title: input.title.trim(),
+        description: input.description?.trim() || null,
+        status: "pending",
+        due_date: input.due_date ?? null,
+        project_id: input.project_id ?? null,
+        completed_at: null,
+        created_at: now,
+        updated_at: now,
+        position: null,
+      };
+      qc.setQueryData<Task[]>(["tasks"], (old) => [optimistic, ...(old ?? [])]);
+      return { prev, tmpId: optimistic.id };
+    },
+    onSuccess: (created, _input, ctx) => {
+      qc.setQueryData<Task[]>(["tasks"], (old) =>
+        (old ?? []).map((t) => (t.id === ctx?.tmpId ? created : t)),
+      );
+    },
+    onError: (e: Error, _input, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
+      toast.error(e.message);
+    },
   });
 
   const createProj = useMutation({
@@ -191,50 +221,98 @@ function TasksPage() {
       if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
       toast.error(e.message);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const toggle = useMutation({
     mutationFn: ({ id, status }: { id: string; status: TaskStatus }) =>
       setTaskStatus(id, status),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
-    onError: (e: Error) => toast.error(e.message),
+    onMutate: async ({ id, status }) => {
+      await qc.cancelQueries({ queryKey: ["tasks"] });
+      const prev = qc.getQueryData<Task[]>(["tasks"]);
+      const stamp = status === "completed" ? new Date().toISOString() : null;
+      qc.setQueryData<Task[]>(["tasks"], (old) =>
+        (old ?? []).map((t) =>
+          t.id === id ? { ...t, status, completed_at: stamp } : t,
+        ),
+      );
+      return { prev };
+    },
+    onError: (e: Error, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
+      toast.error(e.message);
+    },
   });
 
   const remove = useMutation({
     mutationFn: deleteTask,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      toast.success("Tarefa removida");
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ["tasks"] });
+      const prev = qc.getQueryData<Task[]>(["tasks"]);
+      qc.setQueryData<Task[]>(["tasks"], (old) =>
+        (old ?? []).filter((t) => t.id !== id),
+      );
+      return { prev };
     },
-    onError: (e: Error) => toast.error(e.message),
+    onSuccess: () => toast.success("Tarefa removida"),
+    onError: (e: Error, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
+      toast.error(e.message);
+    },
   });
 
   const update = useMutation({
     mutationFn: ({ id, title, description }: { id: string; title: string; description: string }) =>
       updateTask(id, { title, description }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      toast.success("Tarefa atualizada");
+    onMutate: async ({ id, title, description }) => {
+      await qc.cancelQueries({ queryKey: ["tasks"] });
+      const prev = qc.getQueryData<Task[]>(["tasks"]);
+      qc.setQueryData<Task[]>(["tasks"], (old) =>
+        (old ?? []).map((t) =>
+          t.id === id ? { ...t, title: title.trim(), description: description.trim() || null } : t,
+        ),
+      );
+      return { prev };
     },
-    onError: (e: Error) => toast.error(e.message),
+    onSuccess: () => toast.success("Tarefa atualizada"),
+    onError: (e: Error, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
+      toast.error(e.message);
+    },
   });
 
   const setProject = useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId: string | null }) =>
       setTaskProject(id, projectId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      toast.success("Projeto atualizado");
+    onMutate: async ({ id, projectId }) => {
+      await qc.cancelQueries({ queryKey: ["tasks"] });
+      const prev = qc.getQueryData<Task[]>(["tasks"]);
+      qc.setQueryData<Task[]>(["tasks"], (old) =>
+        (old ?? []).map((t) => (t.id === id ? { ...t, project_id: projectId } : t)),
+      );
+      return { prev };
     },
-    onError: (e: Error) => toast.error(e.message),
+    onSuccess: () => toast.success("Projeto atualizado"),
+    onError: (e: Error, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
+      toast.error(e.message);
+    },
   });
 
   const setDate = useMutation({
     mutationFn: ({ id, date }: { id: string; date: string | null }) =>
       setTaskDueDate(id, date),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
-    onError: (e: Error) => toast.error(e.message),
+    onMutate: async ({ id, date }) => {
+      await qc.cancelQueries({ queryKey: ["tasks"] });
+      const prev = qc.getQueryData<Task[]>(["tasks"]);
+      qc.setQueryData<Task[]>(["tasks"], (old) =>
+        (old ?? []).map((t) => (t.id === id ? { ...t, due_date: date } : t)),
+      );
+      return { prev };
+    },
+    onError: (e: Error, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
+      toast.error(e.message);
+    },
   });
 
   const reorder = useMutation({

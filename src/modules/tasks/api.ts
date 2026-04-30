@@ -18,17 +18,21 @@ export async function fetchTasks(): Promise<Task[]> {
     .order("status", { ascending: true })
     .order("due_date", { ascending: true, nullsFirst: false })
     .order("position", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .range(0, 1999);
   if (error) throw error;
   return (data ?? []) as Task[];
 }
 
 export async function reorderTasks(ids: string[]): Promise<void> {
-  await Promise.all(
+  // N parallel UPDATEs — fine for typical column sizes (<50 tasks per bucket).
+  const results = await Promise.all(
     ids.map((id, i) =>
-      supabase.from("tasks").update({ position: i * 10 }).eq("id", id),
+      supabase.from("tasks").update({ position: i * 10 } as never).eq("id", id),
     ),
   );
+  const firstError = results.find((r) => r.error)?.error;
+  if (firstError) throw firstError;
 }
 
 export async function createTask(input: TaskInput): Promise<Task> {
