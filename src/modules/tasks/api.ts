@@ -25,11 +25,13 @@ export async function fetchTasks(): Promise<Task[]> {
 }
 
 export async function reorderTasks(ids: string[]): Promise<void> {
-  await Promise.all(
-    ids.map((id, i) =>
-      supabase.from("tasks").update({ position: i * 10 }).eq("id", id),
-    ),
-  );
+  // Single round-trip via upsert instead of N parallel UPDATEs.
+  // Each row only carries id + position; other columns stay untouched.
+  const rows = ids.map((id, i) => ({ id, position: i * 10 }));
+  const { error } = await supabase
+    .from("tasks")
+    .upsert(rows as never, { onConflict: "id" });
+  if (error) throw error;
 }
 
 export async function createTask(input: TaskInput): Promise<Task> {
