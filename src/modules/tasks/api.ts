@@ -17,9 +17,18 @@ export async function fetchTasks(): Promise<Task[]> {
     .select("*")
     .order("status", { ascending: true })
     .order("due_date", { ascending: true, nullsFirst: false })
+    .order("position", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as Task[];
+}
+
+export async function reorderTasks(ids: string[]): Promise<void> {
+  await Promise.all(
+    ids.map((id, i) =>
+      supabase.from("tasks").update({ position: i * 10 }).eq("id", id),
+    ),
+  );
 }
 
 export async function createTask(input: TaskInput): Promise<Task> {

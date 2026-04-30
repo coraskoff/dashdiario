@@ -10,6 +10,7 @@ export interface Task {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  position: number | null;
 }
 
 export interface TaskInput {

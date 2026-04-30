@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ArrowRight, Calendar as CalendarIcon, Check, CheckCheck, FolderInput, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { ArrowRight, Calendar as CalendarIcon, Check, CheckCheck, FolderInput, GripVertical, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { Pulse } from "@/components/Pulse";
 import {
   createTask,
   deleteTask,
   fetchTasks,
+  reorderTasks,
   setTaskDueDate,
   setTaskProject,
   setTaskStatus,
@@ -228,6 +229,25 @@ function TasksPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const reorder = useMutation({
+    mutationFn: ({ ids }: { ids: string[] }) => reorderTasks(ids),
+    onMutate: async ({ ids }) => {
+      await qc.cancelQueries({ queryKey: ["tasks"] });
+      const prev = qc.getQueryData<Task[]>(["tasks"]);
+      const posMap = new Map(ids.map((id, i) => [id, i * 10]));
+      qc.setQueryData<Task[]>(["tasks"], (old) =>
+        (old ?? []).map((t) =>
+          posMap.has(t.id) ? { ...t, position: posMap.get(t.id)! } : t,
+        ),
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const pendingTotal = visibleTasks.filter((t) => t.status === "pending").length;
@@ -251,6 +271,7 @@ function TasksPage() {
     onOpen: (t: Task) => setDetailId(t.id),
     onDelete: (t: Task) => remove.mutate(t.id),
     onMove: (id: string, bucket: Bucket) => move.mutate({ id, bucket }),
+    onReorder: (ids: string[]) => reorder.mutate({ ids }),
     onSetDate: (id: string, date: string | null) => setDate.mutate({ id, date }),
     onSetProject: (id: string, projectId: string | null) =>
       setProject.mutate({ id, projectId }),
@@ -437,6 +458,7 @@ interface ColumnHandlers {
   onOpen: (t: Task) => void;
   onDelete: (t: Task) => void;
   onMove: (id: string, bucket: Bucket) => void;
+  onReorder: (ids: string[]) => void;
   onSetDate: (id: string, date: string | null) => void;
   onSetProject: (id: string, projectId: string | null) => void;
   editingId: string | null;
@@ -587,22 +609,45 @@ function DayColumn({
   emptyText: string;
 }) {
   const [drag, setDrag] = useState(false);
-  // Completed tasks are archived in the side sheet — only pending shows here.
+  const [insertAt, setInsertAt] = useState<number | null>(null);
   const pending = tasks.filter((t) => t.status === "pending");
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDrag(false);
+    const id = e.dataTransfer.getData("text/task-id");
+    if (!id) { setInsertAt(null); return; }
+    const currentIdx = pending.findIndex((t) => t.id === id);
+    if (currentIdx >= 0) {
+      // Same column — reorder
+      const target = insertAt ?? pending.length;
+      const without = pending.map((t) => t.id).filter((tid) => tid !== id);
+      const adjusted = target > currentIdx ? target - 1 : target;
+      without.splice(Math.max(0, adjusted), 0, id);
+      handlers.onReorder(without);
+    } else {
+      handlers.onMove(id, bucket);
+    }
+    setInsertAt(null);
+  }
 
   return (
     <section
       onDragOver={(e) => {
         e.preventDefault();
         setDrag(true);
+        // If hovering over the column background (not a task row), insert at end
+        if (!(e.target as HTMLElement).closest("[data-task-row]")) {
+          setInsertAt(pending.length);
+        }
       }}
-      onDragLeave={() => setDrag(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDrag(false);
-        const id = e.dataTransfer.getData("text/task-id");
-        if (id) handlers.onMove(id, bucket);
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setDrag(false);
+          setInsertAt(null);
+        }
       }}
+      onDrop={handleDrop}
       className={`flex h-full min-h-[420px] w-full flex-col rounded-2xl border bg-card transition-colors ${
         drag
           ? "border-foreground/40 bg-secondary/60"
@@ -611,7 +656,7 @@ function DayColumn({
             : "border-border/70"
       }`}
     >
-      {/* Column header — big numeral as visual anchor */}
+      {/* Column header */}
       <header className="flex items-baseline justify-between gap-4 px-5 pt-5">
         <div className="flex items-baseline gap-3">
           {dayNumber !== null && (
@@ -646,7 +691,7 @@ function DayColumn({
         />
       </div>
 
-      {/* Task list — flat, separated by hairline only (no card-in-card) */}
+      {/* Task list */}
       <ul className="flex-1 px-2 pb-3 pt-2">
         {loading && (
           <li className="flex items-center justify-center px-3 py-8">
@@ -656,7 +701,7 @@ function DayColumn({
         {!loading && pending.length === 0 && (
           <li className="px-3 py-10 text-sm text-muted-foreground">{emptyText}</li>
         )}
-        {pending.map((t) =>
+        {pending.map((t, idx) =>
           handlers.editingId === t.id ? (
             <EditRow
               key={t.id}
@@ -665,8 +710,21 @@ function DayColumn({
               onCancel={handlers.onCancelEdit}
             />
           ) : (
-            <TaskRow key={t.id} task={t} accent={accent} {...handlers} />
+            <React.Fragment key={t.id}>
+              {insertAt === idx && (
+                <li aria-hidden className="mx-3 my-0.5 h-0.5 rounded-full bg-primary/70" />
+              )}
+              <TaskRow
+                task={t}
+                accent={accent}
+                onDragOverHint={(isBottom) => setInsertAt(isBottom ? idx + 1 : idx)}
+                {...handlers}
+              />
+            </React.Fragment>
           ),
+        )}
+        {insertAt === pending.length && pending.length > 0 && (
+          <li aria-hidden className="mx-3 my-0.5 h-0.5 rounded-full bg-primary/70" />
         )}
       </ul>
     </section>
@@ -716,21 +774,36 @@ function TaskRow({
   onOpen,
   projectsById,
   showProjectDot,
+  onDragOverHint,
   ...handlers
-}: ColumnHandlers & { task: Task; accent?: boolean }) {
+}: ColumnHandlers & {
+  task: Task;
+  accent?: boolean;
+  onDragOverHint?: (isBottomHalf: boolean) => void;
+}) {
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
   return (
     <li
-          draggable
-          onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
-          onClick={(e) => {
-            const target = e.target as HTMLElement;
-            if (target.closest("button, a, [role='menuitem']")) return;
-            onOpen(task);
-          }}
-          className="group relative flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary/60"
-        >
+      data-task-row
+      draggable
+      onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onDragOverHint) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          onDragOverHint(e.clientY > rect.top + rect.height / 2);
+        }
+      }}
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest("button, a, [role='menuitem']")) return;
+        onOpen(task);
+      }}
+      className="group relative flex cursor-pointer items-start gap-2 rounded-lg px-2 py-2.5 transition-colors hover:bg-secondary/60"
+    >
+      <GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-muted-foreground/25 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing" />
       <button
         onClick={() => onToggle(task)}
         aria-label={done ? "Reabrir" : "Concluir"}
