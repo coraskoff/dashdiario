@@ -1104,11 +1104,11 @@ function TransactionsPanel({
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={(v) => !v && onClose()}>
-        <DrawerContent className="max-h-[88vh]">
-          <DrawerHeader className="px-4 pt-4">
+        <DrawerContent className="flex max-h-[88vh] flex-col">
+          <DrawerHeader className="shrink-0 px-4 pt-4">
             <DrawerTitle className="text-left text-base">{title}</DrawerTitle>
           </DrawerHeader>
-          <div className="overflow-y-auto px-4 pb-6">{body}</div>
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-6">{body}</div>
         </DrawerContent>
       </Drawer>
     );
@@ -1116,11 +1116,13 @@ function TransactionsPanel({
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-md">
-        <SheetHeader>
+      <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
+        <SheetHeader className="shrink-0">
           <SheetTitle>{title}</SheetTitle>
         </SheetHeader>
-        <div className="mt-4">{body}</div>
+        <div className="-mx-6 mt-4 flex-1 overflow-y-auto overscroll-contain px-6 pb-6">
+          {body}
+        </div>
       </SheetContent>
     </Sheet>
   );
