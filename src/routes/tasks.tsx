@@ -221,7 +221,6 @@ function TasksPage() {
       if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
       toast.error(e.message);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const toggle = useMutation({
