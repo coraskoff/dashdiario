@@ -255,11 +255,13 @@ function Header({
   onPrev,
   onNext,
   onToday,
+  onNew,
 }: {
   month: string;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
+  onNew: (k: "entrada" | "saida" | "diario") => void;
 }) {
   const isCurrent = month === currentMonth();
   return (
@@ -282,8 +284,253 @@ function Header({
         <Button variant="ghost" size="icon" onClick={onNext} aria-label="Próximo mês">
           <ArrowRight />
         </Button>
+        <DesktopNewButton onNew={onNew} />
       </div>
     </header>
+  );
+}
+
+/* ---------- new action menu (desktop popover) ---------- */
+function DesktopNewButton({
+  onNew,
+}: {
+  onNew: (k: "entrada" | "saida" | "diario") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          size="sm"
+          className="ml-1 hidden h-9 gap-1.5 px-3 md:inline-flex"
+        >
+          <Plus className="h-4 w-4" />
+          Novo
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-56 p-1.5">
+        <NewActionList
+          onPick={(k) => {
+            setOpen(false);
+            onNew(k);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/* ---------- new action FAB (mobile) ---------- */
+function MobileNewFab({
+  onNew,
+}: {
+  onNew: (k: "entrada" | "saida" | "diario") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Novo lançamento"
+        className={cn(
+          "fixed bottom-5 left-1/2 z-40 -translate-x-1/2 md:hidden",
+          "flex h-14 w-14 items-center justify-center rounded-full",
+          "bg-primary text-primary-foreground shadow-lg shadow-black/20",
+          "ring-4 ring-background transition-transform active:scale-95",
+        )}
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+      <Drawer open={open} onOpenChange={setOpen}>
+        <DrawerContent>
+          <DrawerHeader className="px-4 pt-4">
+            <DrawerTitle className="text-left text-base">Novo lançamento</DrawerTitle>
+          </DrawerHeader>
+          <div className="px-3 pb-6">
+            <NewActionList
+              size="lg"
+              onPick={(k) => {
+                setOpen(false);
+                onNew(k);
+              }}
+            />
+          </div>
+        </DrawerContent>
+      </Drawer>
+    </>
+  );
+}
+
+function NewActionList({
+  onPick,
+  size = "md",
+}: {
+  onPick: (k: "entrada" | "saida" | "diario") => void;
+  size?: "md" | "lg";
+}) {
+  const items: Array<{
+    kind: "entrada" | "saida" | "diario";
+    label: string;
+    desc: string;
+    Icon: typeof ArrowDownLeft;
+    iconWrap: string;
+  }> = [
+    {
+      kind: "entrada",
+      label: "Entrada",
+      desc: "Recebimento ou crédito",
+      Icon: ArrowDownLeft,
+      iconWrap:
+        "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400",
+    },
+    {
+      kind: "saida",
+      label: "Saída",
+      desc: "Pagamento ou despesa",
+      Icon: ArrowUpRight,
+      iconWrap: "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400",
+    },
+    {
+      kind: "diario",
+      label: "Gasto diário",
+      desc: "Ajustar diário de hoje",
+      Icon: CalendarDays,
+      iconWrap: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400",
+    },
+  ];
+  return (
+    <ul className="flex flex-col gap-1">
+      {items.map(({ kind, label, desc, Icon, iconWrap }) => (
+        <li key={kind}>
+          <button
+            type="button"
+            onClick={() => onPick(kind)}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-md px-2 text-left transition-colors hover:bg-muted",
+              size === "lg" ? "py-3" : "py-2",
+            )}
+          >
+            <span
+              className={cn(
+                "flex shrink-0 items-center justify-center rounded-md",
+                iconWrap,
+                size === "lg" ? "h-10 w-10" : "h-8 w-8",
+              )}
+            >
+              <Icon className={size === "lg" ? "h-5 w-5" : "h-4 w-4"} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">{label}</span>
+              <span className="block text-[11px] text-muted-foreground">{desc}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* ---------- diário quick edit ---------- */
+function DiarioQuickEdit({
+  open,
+  onClose,
+  date,
+  currentValue,
+  suggested,
+  hasOverride,
+  onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  date: string;
+  currentValue: number;
+  suggested: number;
+  hasOverride: boolean;
+  onSave: (value: number | null) => void;
+}) {
+  const isMobile = useIsMobile();
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    if (open) setDraft(formatInput(currentValue));
+  }, [open, currentValue]);
+
+  const submit = () => {
+    const v = parseAmount(draft);
+    if (v < 0) {
+      toast.error("Valor inválido.");
+      return;
+    }
+    onSave(v);
+  };
+
+  const body = (
+    <div className="space-y-4">
+      <div className="rounded-lg border bg-muted/30 p-3">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          {formatDayLabel(date)}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Sugerido: <span className="tabular-nums">{formatCurrency(suggested)}</span>
+          {hasOverride && <span className="ml-2 text-amber-600">· ajustado</span>}
+        </p>
+      </div>
+      <div>
+        <label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          Gasto diário
+        </label>
+        <Input
+          autoFocus
+          inputMode="decimal"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+          placeholder="0,00"
+          className="mt-1 h-11 text-right text-base tabular-nums"
+        />
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        {hasOverride && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onSave(null)}
+          >
+            Usar sugerido
+          </Button>
+        )}
+        <Button size="sm" onClick={submit}>
+          Salvar
+        </Button>
+      </div>
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={(v) => !v && onClose()}>
+        <DrawerContent>
+          <DrawerHeader className="px-4 pt-4">
+            <DrawerTitle className="text-left text-base">Gasto diário</DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-6">{body}</div>
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent side="right" className="w-full sm:max-w-sm">
+        <SheetHeader>
+          <SheetTitle>Gasto diário</SheetTitle>
+        </SheetHeader>
+        <div className="mt-4">{body}</div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
