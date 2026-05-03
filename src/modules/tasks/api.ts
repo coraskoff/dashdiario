@@ -25,14 +25,12 @@ export async function fetchTasks(): Promise<Task[]> {
 }
 
 export async function reorderTasks(ids: string[]): Promise<void> {
-  // N parallel UPDATEs — fine for typical column sizes (<50 tasks per bucket).
-  const results = await Promise.all(
-    ids.map((id, i) =>
-      supabase.from("tasks").update({ position: i * 10 } as never).eq("id", id),
-    ),
-  );
-  const firstError = results.find((r) => r.error)?.error;
-  if (firstError) throw firstError;
+  const updates = ids.map((id, i) => ({ id, position: i * 10 }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await supabase
+    .from("tasks")
+    .upsert(updates as any, { onConflict: "id" });
+  if (error) throw error;
 }
 
 export async function createTask(input: TaskInput): Promise<Task> {

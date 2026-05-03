@@ -9,6 +9,8 @@ import {
   ArrowUpRight,
   AlertTriangle,
   ChevronDown,
+  Eye,
+  EyeOff,
   Sparkles,
   Pencil,
   Plus,
@@ -63,9 +65,23 @@ export const Route = createFileRoute("/finance")({
 /* ---------- helpers ---------- */
 function parseAmount(input: string): number {
   if (!input) return 0;
-  const normalized = input.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : 0;
+  const normalized = input.replace(/\s/g, "").replace(/,/g, ".");
+  const tokens = normalized.split(/([+\-*/])/);
+  let result = 0;
+  let operator = "+";
+  for (const token of tokens) {
+    if (["+", "-", "*", "/"].includes(token)) {
+      operator = token;
+    } else {
+      const n = Number(token);
+      if (!Number.isFinite(n)) return 0;
+      if (operator === "+") result += n;
+      else if (operator === "-") result -= n;
+      else if (operator === "*") result *= n;
+      else if (operator === "/") result = n !== 0 ? result / n : 0;
+    }
+  }
+  return Number.isFinite(result) ? result : 0;
 }
 
 function formatInput(value: number): string {
@@ -94,6 +110,16 @@ function FinancePage() {
   const [month, setMonth] = useState<string>(currentMonth());
   const [panel, setPanel] = useState<PanelKind>(null);
   const [diarioQuickOpen, setDiarioQuickOpen] = useState(false);
+  const [panelEditId, setPanelEditId] = useState<string | null>(null);
+  const [hidden, setHidden] = useState<boolean>(() => {
+    try { return localStorage.getItem("finance-hidden") === "1"; } catch { return false; }
+  });
+  const toggleHidden = () =>
+    setHidden((v) => {
+      const next = !v;
+      try { localStorage.setItem("finance-hidden", next ? "1" : "0"); } catch {}
+      return next;
+    });
 
   const monthsQuery = useQuery({ queryKey: ["finance", "months"], queryFn: fetchAllMonths });
   const daysQuery = useQuery({ queryKey: ["finance", "days"], queryFn: fetchAllDays });
@@ -185,6 +211,8 @@ function FinancePage() {
     <div className="mx-auto w-full max-w-5xl space-y-5 px-3 py-5 sm:px-4 md:space-y-6 md:px-8 md:py-6">
       <Header
         month={month}
+        hidden={hidden}
+        onToggleHidden={toggleHidden}
         onPrev={() => setMonth(shiftMonth(month, -1))}
         onNext={() => setMonth(shiftMonth(month, 1))}
         onToday={() => setMonth(currentMonth())}
@@ -196,6 +224,7 @@ function FinancePage() {
         config={monthConfig}
         summary={summary}
         openingBalance={openingBalance}
+        hidden={hidden}
         onSaveVariable={(variable) =>
           updateMonthMutation.mutate({ month, variable_amount: variable })
         }
@@ -204,6 +233,7 @@ function FinancePage() {
       <SecondaryStats
         summary={summary}
         openingBalance={openingBalance}
+        hidden={hidden}
         onOpenEntradas={() => setPanel("entrada")}
         onOpenSaidas={() => setPanel("saida")}
       />
@@ -214,7 +244,7 @@ function FinancePage() {
         onUpdateDiario={(date, value) =>
           updateDiarioMutation.mutate({ date, diario_override: value })
         }
-        onOpenKind={setPanel}
+        onOpenKind={(k, editId) => { setPanel(k); setPanelEditId(editId ?? null); }}
       />
 
       <ProjectionCard projection={projection} highlightMonth={month} />
@@ -223,7 +253,8 @@ function FinancePage() {
         kind={panel}
         month={month}
         transactions={monthTx}
-        onClose={() => setPanel(null)}
+        editId={panelEditId}
+        onClose={() => { setPanel(null); setPanelEditId(null); }}
         onSave={(input) => upsertTxMutation.mutate(input)}
         onDelete={(id) => deleteTxMutation.mutate(id)}
       />
@@ -252,12 +283,16 @@ function FinancePage() {
 /* ---------- header ---------- */
 function Header({
   month,
+  hidden,
+  onToggleHidden,
   onPrev,
   onNext,
   onToday,
   onNew,
 }: {
   month: string;
+  hidden: boolean;
+  onToggleHidden: () => void;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
@@ -273,6 +308,14 @@ function Header({
         </h1>
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleHidden}
+          aria-label={hidden ? "Exibir valores" : "Ocultar valores"}
+        >
+          {hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </Button>
         <Button variant="ghost" size="icon" onClick={onPrev} aria-label="Mês anterior">
           <ArrowLeft />
         </Button>
@@ -553,14 +596,17 @@ function HeroCard({
   config,
   summary,
   openingBalance,
+  hidden,
   onSaveVariable,
 }: {
   month: string;
   config: FinanceMonth | undefined;
   summary: ReturnType<typeof summarizeMonth>;
   openingBalance: number;
+  hidden: boolean;
   onSaveVariable: (variable: number) => void;
 }) {
+  const mask = "R$ ••••";
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const variable = config?.variable_amount ?? 0;
@@ -615,15 +661,17 @@ function HeroCard({
           <p
             className={cn(
               "mt-2 break-words text-3xl font-semibold leading-tight tracking-tight tabular-nums sm:text-4xl md:text-5xl",
-              isProjPositive
-                ? "text-emerald-600 dark:text-emerald-400"
-                : "text-rose-600 dark:text-rose-400",
+              hidden
+                ? "text-muted-foreground"
+                : isProjPositive
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-rose-600 dark:text-rose-400",
             )}
           >
-            {formatCurrency(projected)}
+            {hidden ? mask : formatCurrency(projected)}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {variable > 0 && (
+            {variable > 0 && !hidden && (
               <span
                 className={cn(
                   "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums",
@@ -668,7 +716,7 @@ function HeroCard({
                   onClick={() => setEditing(true)}
                   className="group inline-flex items-center gap-1 font-medium text-foreground tabular-nums hover:text-primary"
                 >
-                  {formatCurrency(variable)}
+                  {hidden ? mask : formatCurrency(variable)}
                   <Pencil className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" />
                 </button>
               )}
@@ -677,7 +725,7 @@ function HeroCard({
             <div className="flex items-center gap-1.5">
               <span className="uppercase tracking-wide">Diário</span>
               <span className="font-medium text-foreground tabular-nums">
-                {formatCurrency(daily)}
+                {hidden ? mask : formatCurrency(daily)}
               </span>
             </div>
           </div>
@@ -691,16 +739,18 @@ function HeroCard({
             </p>
             {variable > 0 && (
               <p className="text-[11px] tabular-nums text-muted-foreground sm:text-xs">
-                <span className="font-medium text-foreground">{pctMonth}%</span> do mês /{" "}
+                <span className="font-medium text-foreground">{hidden ? "••%" : `${pctMonth}%`}</span> do mês /{" "}
                 <span
                   className={cn(
                     "font-medium",
-                    overPace
-                      ? "text-rose-600 dark:text-rose-400"
-                      : "text-emerald-600 dark:text-emerald-400",
+                    hidden
+                      ? "text-foreground"
+                      : overPace
+                        ? "text-rose-600 dark:text-rose-400"
+                        : "text-emerald-600 dark:text-emerald-400",
                   )}
                 >
-                  {pctVar}%
+                  {hidden ? "••%" : `${pctVar}%`}
                 </span>{" "}
                 do variável
               </p>
@@ -731,9 +781,9 @@ function HeroCard({
             <div className="mt-2 flex items-center justify-between gap-2 text-[10px] tabular-nums text-muted-foreground sm:text-[11px]">
               <span>R$ 0</span>
               <span className="truncate text-foreground/80">
-                Meta {formatCurrencyCompact(targetProportional)}
+                {hidden ? "Meta ••••" : `Meta ${formatCurrencyCompact(targetProportional)}`}
               </span>
-              <span>{formatCurrencyCompact(variable)}</span>
+              <span>{hidden ? "••••" : formatCurrencyCompact(variable)}</span>
             </div>
           </div>
 
@@ -746,7 +796,7 @@ function HeroCard({
                   overPace ? "bg-rose-500" : "bg-emerald-500",
                 )}
               />
-              Gasto real ({formatCurrencyCompact(spentReal)})
+              {hidden ? "Gasto real" : `Gasto real (${formatCurrencyCompact(spentReal)})`}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-px bg-foreground/70" />
@@ -763,33 +813,38 @@ function HeroCard({
 function SecondaryStats({
   summary,
   openingBalance,
+  hidden,
   onOpenEntradas,
   onOpenSaidas,
 }: {
   summary: ReturnType<typeof summarizeMonth>;
   openingBalance: number;
+  hidden: boolean;
   onOpenEntradas: () => void;
   onOpenSaidas: () => void;
 }) {
   return (
     <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-4">
-      <Stat label="Saldo inicial" value={openingBalance} />
+      <Stat label="Saldo inicial" value={openingBalance} hidden={hidden} />
       <StatButton
         label="Entradas"
         value={summary.totalEntrada}
         tone="positive"
+        hidden={hidden}
         onClick={onOpenEntradas}
       />
       <StatButton
         label="Saídas"
         value={summary.totalSaida}
         tone="negative"
+        hidden={hidden}
         onClick={onOpenSaidas}
       />
       <Stat
         label="Performance"
         value={summary.performance}
         tone={summary.performance >= 0 ? "positive" : "negative"}
+        hidden={hidden}
       />
     </div>
   );
@@ -800,11 +855,13 @@ function Stat({
   value,
   tone,
   emphasize,
+  hidden,
 }: {
   label: string;
   value: number;
   tone?: "positive" | "negative";
   emphasize?: boolean;
+  hidden?: boolean;
 }) {
   return (
     <div className="min-w-0 bg-card p-3 sm:p-4">
@@ -813,12 +870,12 @@ function Stat({
         className={cn(
           "mt-1 truncate font-semibold tabular-nums tracking-tight",
           emphasize ? "text-xl" : "text-base",
-          tone === "positive" && value > 0 && "text-emerald-600 dark:text-emerald-400",
-          tone === "negative" && value > 0 && "text-rose-600 dark:text-rose-400",
-          tone === "positive" && value < 0 && "text-rose-600 dark:text-rose-400",
+          !hidden && tone === "positive" && value > 0 && "text-emerald-600 dark:text-emerald-400",
+          !hidden && tone === "negative" && value > 0 && "text-rose-600 dark:text-rose-400",
+          !hidden && tone === "positive" && value < 0 && "text-rose-600 dark:text-rose-400",
         )}
       >
-        {formatCurrency(value)}
+        {hidden ? "R$ ••••" : formatCurrency(value)}
       </p>
     </div>
   );
@@ -828,11 +885,13 @@ function StatButton({
   label,
   value,
   tone,
+  hidden,
   onClick,
 }: {
   label: string;
   value: number;
   tone: "positive" | "negative";
+  hidden?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -847,11 +906,11 @@ function StatButton({
       <p
         className={cn(
           "mt-1 truncate text-base font-semibold tabular-nums tracking-tight",
-          tone === "positive" && value > 0 && "text-emerald-600 dark:text-emerald-400",
-          tone === "negative" && value > 0 && "text-rose-600 dark:text-rose-400",
+          !hidden && tone === "positive" && value > 0 && "text-emerald-600 dark:text-emerald-400",
+          !hidden && tone === "negative" && value > 0 && "text-rose-600 dark:text-rose-400",
         )}
       >
-        {formatCurrency(value)}
+        {hidden ? "R$ ••••" : formatCurrency(value)}
       </p>
     </button>
   );
@@ -867,7 +926,7 @@ function Pulse({
   rows: DayRow[];
   suggestedDaily: number;
   onUpdateDiario: (date: string, value: number | null) => void;
-  onOpenKind: (k: PanelKind) => void;
+  onOpenKind: (k: PanelKind, editId?: string) => void;
 }) {
   const todayRef = useRef<HTMLLIElement>(null);
 
@@ -1093,7 +1152,7 @@ function Pulse({
                             {r.transactions.map((t) => (
                               <button
                                 key={t.id}
-                                onClick={() => onOpenKind(t.kind)}
+                                onClick={() => onOpenKind(t.kind, t.id)}
                                 className={cn(
                                   "group inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] tabular-nums transition-colors",
                                   t.kind === "entrada"
@@ -1248,7 +1307,7 @@ function Pulse({
                     {r.transactions.map((t) => (
                       <button
                         key={t.id}
-                        onClick={() => onOpenKind(t.kind)}
+                        onClick={() => onOpenKind(t.kind, t.id)}
                         className={cn(
                           "group inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] tabular-nums transition-colors",
                           t.kind === "entrada"
@@ -1308,7 +1367,7 @@ function DiarioInline({
     return (
       <input
         ref={inputRef}
-        inputMode="decimal"
+        inputMode="text"
         value={draft}
         placeholder={formatInput(suggested)}
         onChange={(e) => setDraft(e.target.value)}
@@ -1355,6 +1414,7 @@ function TransactionsPanel({
   kind,
   month,
   transactions,
+  editId,
   onClose,
   onSave,
   onDelete,
@@ -1362,6 +1422,7 @@ function TransactionsPanel({
   kind: PanelKind;
   month: string;
   transactions: FinanceTransaction[];
+  editId?: string | null;
   onClose: () => void;
   onSave: (input: Parameters<typeof upsertTransaction>[0]) => void;
   onDelete: (id: string) => void;
@@ -1385,6 +1446,7 @@ function TransactionsPanel({
       month={month}
       list={filtered}
       total={total}
+      editId={editId}
       onSave={onSave}
       onDelete={onDelete}
     />
@@ -1422,6 +1484,7 @@ function PanelBody({
   month,
   list,
   total,
+  editId,
   onSave,
   onDelete,
 }: {
@@ -1429,6 +1492,7 @@ function PanelBody({
   month: string;
   list: FinanceTransaction[];
   total: number;
+  editId?: string | null;
   onSave: (input: Parameters<typeof upsertTransaction>[0]) => void;
   onDelete: (id: string) => void;
 }) {
@@ -1446,6 +1510,16 @@ function PanelBody({
   useEffect(() => {
     setDate(defaultDate);
   }, [defaultDate, kind]);
+
+  useEffect(() => {
+    if (!editId) return;
+    const t = list.find((tx) => tx.id === editId);
+    if (!t) return;
+    setEditingId(t.id);
+    setAmountStr(formatInput(t.amount));
+    setLabel(t.label ?? "");
+    setDate(t.date);
+  }, [editId]);
 
   const tone =
     kind === "entrada"

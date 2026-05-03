@@ -181,6 +181,7 @@ function TasksPage() {
       if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
       toast.error(e.message);
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const createProj = useMutation({
@@ -241,6 +242,7 @@ function TasksPage() {
       if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
       toast.error(e.message);
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const remove = useMutation({
@@ -254,10 +256,11 @@ function TasksPage() {
       return { prev };
     },
     onSuccess: () => toast.success("Tarefa removida"),
-    onError: (e: Error, _id, ctx) => {
+    onError: (e: Error, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
       toast.error(e.message);
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const update = useMutation({
@@ -278,6 +281,7 @@ function TasksPage() {
       if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
       toast.error(e.message);
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const setProject = useMutation({
@@ -296,6 +300,7 @@ function TasksPage() {
       if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
       toast.error(e.message);
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const setDate = useMutation({
@@ -313,6 +318,7 @@ function TasksPage() {
       if (ctx?.prev) qc.setQueryData(["tasks"], ctx.prev);
       toast.error(e.message);
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const reorder = useMutation({
@@ -1022,6 +1028,9 @@ function TaskRow({
             {task.description}
           </p>
         )}
+        <p className="mt-0.5 text-xs text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100">
+          {new Date(task.created_at).toLocaleDateString("pt-BR", { day: "numeric", month: "short" })}
+        </p>
       </div>
       <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100">
         <TaskActionsMenu
