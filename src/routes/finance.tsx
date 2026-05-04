@@ -21,6 +21,10 @@ import {
 
 import {
   deleteTransaction,
+  deleteRecurringFromDate,
+  deleteAllRecurring,
+  updateRecurringFromDate,
+  updateAllRecurring,
   fetchAllDays,
   fetchAllMonths,
   fetchAllTransactions,
@@ -28,6 +32,7 @@ import {
   upsertMonth,
   upsertTransaction,
 } from "@/modules/finance/api";
+import { RecurringScopeDialog, type RecurringScope } from "@/modules/finance/RecurringScopeDialog";
 import type { FinanceMonth, FinanceTransaction } from "@/modules/finance/types";
 import {
   buildDayRows,
@@ -198,6 +203,45 @@ function FinancePage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const deleteFromDateMutation = useMutation({
+    mutationFn: ({ groupId, fromDate }: { groupId: string; fromDate: string }) =>
+      deleteRecurringFromDate(groupId, fromDate),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "transactions"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteAllMutation = useMutation({
+    mutationFn: (groupId: string) => deleteAllRecurring(groupId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "transactions"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const updateFromDateMutation = useMutation({
+    mutationFn: ({
+      groupId,
+      fromDate,
+      patch,
+    }: {
+      groupId: string;
+      fromDate: string;
+      patch: { amount?: number; label?: string | null };
+    }) => updateRecurringFromDate(groupId, fromDate, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "transactions"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const updateAllMutation = useMutation({
+    mutationFn: ({
+      groupId,
+      patch,
+    }: {
+      groupId: string;
+      patch: { amount?: number; label?: string | null };
+    }) => updateAllRecurring(groupId, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "transactions"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const suggested = suggestedDaily(monthConfig?.variable_amount ?? 0, month);
 
   const openNew = (k: "entrada" | "saida" | "diario") => {
@@ -257,6 +301,10 @@ function FinancePage() {
         onClose={() => { setPanel(null); setPanelEditId(null); }}
         onSave={(input) => upsertTxMutation.mutate(input)}
         onDelete={(id) => deleteTxMutation.mutate(id)}
+        onDeleteFromDate={(groupId, fromDate) => deleteFromDateMutation.mutate({ groupId, fromDate })}
+        onDeleteAll={(groupId) => deleteAllMutation.mutate(groupId)}
+        onUpdateFromDate={(groupId, fromDate, patch) => updateFromDateMutation.mutate({ groupId, fromDate, patch })}
+        onUpdateAll={(groupId, patch) => updateAllMutation.mutate({ groupId, patch })}
       />
 
       <DiarioQuickEdit
@@ -1418,6 +1466,10 @@ function TransactionsPanel({
   onClose,
   onSave,
   onDelete,
+  onDeleteFromDate,
+  onDeleteAll,
+  onUpdateFromDate,
+  onUpdateAll,
 }: {
   kind: PanelKind;
   month: string;
@@ -1426,6 +1478,10 @@ function TransactionsPanel({
   onClose: () => void;
   onSave: (input: Parameters<typeof upsertTransaction>[0]) => void;
   onDelete: (id: string) => void;
+  onDeleteFromDate: (groupId: string, fromDate: string) => void;
+  onDeleteAll: (groupId: string) => void;
+  onUpdateFromDate: (groupId: string, fromDate: string, patch: { amount?: number; label?: string | null }) => void;
+  onUpdateAll: (groupId: string, patch: { amount?: number; label?: string | null }) => void;
 }) {
   const isMobile = useIsMobile();
   const open = kind !== null;
@@ -1449,6 +1505,10 @@ function TransactionsPanel({
       editId={editId}
       onSave={onSave}
       onDelete={onDelete}
+      onDeleteFromDate={onDeleteFromDate}
+      onDeleteAll={onDeleteAll}
+      onUpdateFromDate={onUpdateFromDate}
+      onUpdateAll={onUpdateAll}
     />
   ) : null;
 
@@ -1487,6 +1547,10 @@ function PanelBody({
   editId,
   onSave,
   onDelete,
+  onDeleteFromDate,
+  onDeleteAll,
+  onUpdateFromDate,
+  onUpdateAll,
 }: {
   kind: "entrada" | "saida";
   month: string;
@@ -1495,6 +1559,10 @@ function PanelBody({
   editId?: string | null;
   onSave: (input: Parameters<typeof upsertTransaction>[0]) => void;
   onDelete: (id: string) => void;
+  onDeleteFromDate: (groupId: string, fromDate: string) => void;
+  onDeleteAll: (groupId: string) => void;
+  onUpdateFromDate: (groupId: string, fromDate: string, patch: { amount?: number; label?: string | null }) => void;
+  onUpdateAll: (groupId: string, patch: { amount?: number; label?: string | null }) => void;
 }) {
   const isCurrentMonth = month === currentMonth();
   const defaultDate = isCurrentMonth ? todayIso() : `${month}-01`;
@@ -1506,6 +1574,12 @@ function PanelBody({
   const [recurring, setRecurring] = useState(false);
   const [recurringCount, setRecurringCount] = useState(3);
   const [unlimited, setUnlimited] = useState(false);
+
+  type PendingAction =
+    | { type: "edit"; tx: FinanceTransaction; amount: number; label: string | null }
+    | { type: "delete"; tx: FinanceTransaction };
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
 
   useEffect(() => {
     setDate(defaultDate);
@@ -1547,22 +1621,59 @@ function PanelBody({
       toast.error("Informe um valor maior que zero.");
       return;
     }
-    const occurrences =
-      !recurring || editingId
-        ? 1
-        : unlimited
-          ? remainingMonthsInYear(date)
-          : recurringCount;
+
+    if (editingId) {
+      const tx = list.find((t) => t.id === editingId);
+      if (tx?.recurring_group_id) {
+        setPendingAction({ type: "edit", tx, amount, label: label.trim() || null });
+        setScopeDialogOpen(true);
+        return;
+      }
+      onSave({ id: editingId, date, kind, amount, label: label.trim() || null });
+      reset();
+      return;
+    }
+
+    const occurrences = !recurring
+      ? 1
+      : unlimited
+        ? remainingMonthsInYear(date)
+        : recurringCount;
+    const groupId = occurrences > 1 ? crypto.randomUUID() : null;
     for (let i = 0; i < occurrences; i++) {
       onSave({
-        id: i === 0 ? (editingId ?? undefined) : undefined,
+        id: undefined,
         date: i === 0 ? date : shiftDate(date, i),
         kind,
         amount,
         label: label.trim() || null,
+        recurring_group_id: groupId,
       });
     }
     reset();
+  }
+
+  function handleScopeConfirm(scope: RecurringScope) {
+    setScopeDialogOpen(false);
+    if (!pendingAction) return;
+
+    if (pendingAction.type === "delete") {
+      const { tx } = pendingAction;
+      if (scope === "only_this") onDelete(tx.id);
+      else if (scope === "this_and_next") onDeleteFromDate(tx.recurring_group_id!, tx.date);
+      else onDeleteAll(tx.recurring_group_id!);
+    }
+
+    if (pendingAction.type === "edit") {
+      const { tx, amount, label: pendingLabel } = pendingAction;
+      const patch = { amount, label: pendingLabel };
+      onSave({ id: tx.id, date, kind, amount, label: pendingLabel });
+      if (scope === "this_and_next") onUpdateFromDate(tx.recurring_group_id!, tx.date, patch);
+      else if (scope === "all") onUpdateAll(tx.recurring_group_id!, patch);
+    }
+
+    reset();
+    setPendingAction(null);
   }
 
   const submitLabel = (() => {
@@ -1731,7 +1842,14 @@ function PanelBody({
                         </p>
                       </button>
                       <button
-                        onClick={() => onDelete(t.id)}
+                        onClick={() => {
+                          if (t.recurring_group_id) {
+                            setPendingAction({ type: "delete", tx: t });
+                            setScopeDialogOpen(true);
+                          } else {
+                            onDelete(t.id);
+                          }
+                        }}
                         className="rounded p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-rose-600 group-hover:opacity-100"
                         aria-label="Remover"
                       >
@@ -1745,6 +1863,16 @@ function PanelBody({
           </ul>
         )}
       </div>
+
+      <RecurringScopeDialog
+        open={scopeDialogOpen}
+        action={pendingAction?.type ?? "delete"}
+        onConfirm={handleScopeConfirm}
+        onCancel={() => {
+          setScopeDialogOpen(false);
+          setPendingAction(null);
+        }}
+      />
     </div>
   );
 }

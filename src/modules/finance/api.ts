@@ -29,13 +29,14 @@ export async function fetchAllDays(): Promise<FinanceDay[]> {
 export async function fetchAllTransactions(): Promise<FinanceTransaction[]> {
   const { data, error } = await supabase
     .from("finance_transactions")
-    .select("id, date, kind, amount, label")
+    .select("id, date, kind, amount, label, recurring_group_id")
     .order("date")
     .order("created_at");
   if (error) throw error;
   return (data ?? []).map((d) => ({
     ...d,
     amount: Number(d.amount),
+    recurring_group_id: d.recurring_group_id ?? null,
   })) as FinanceTransaction[];
 }
 
@@ -83,9 +84,10 @@ export async function upsertTransaction(
         kind: input.kind,
         amount: input.amount,
         label: input.label ?? null,
+        recurring_group_id: input.recurring_group_id ?? null,
       })
       .eq("id", input.id)
-      .select("id, date, kind, amount, label")
+      .select("id, date, kind, amount, label, recurring_group_id")
       .single();
     if (error) throw error;
     return { ...data, amount: Number(data.amount) } as FinanceTransaction;
@@ -97,8 +99,9 @@ export async function upsertTransaction(
       kind: input.kind,
       amount: input.amount,
       label: input.label ?? null,
+      recurring_group_id: input.recurring_group_id ?? null,
     })
-    .select("id, date, kind, amount, label")
+    .select("id, date, kind, amount, label, recurring_group_id")
     .single();
   if (error) throw error;
   return { ...data, amount: Number(data.amount) } as FinanceTransaction;
@@ -106,5 +109,49 @@ export async function upsertTransaction(
 
 export async function deleteTransaction(id: string): Promise<void> {
   const { error } = await supabase.from("finance_transactions").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteRecurringFromDate(
+  groupId: string,
+  fromDate: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("finance_transactions")
+    .delete()
+    .eq("recurring_group_id", groupId)
+    .gte("date", fromDate);
+  if (error) throw error;
+}
+
+export async function deleteAllRecurring(groupId: string): Promise<void> {
+  const { error } = await supabase
+    .from("finance_transactions")
+    .delete()
+    .eq("recurring_group_id", groupId);
+  if (error) throw error;
+}
+
+export async function updateRecurringFromDate(
+  groupId: string,
+  fromDate: string,
+  patch: { amount?: number; label?: string | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from("finance_transactions")
+    .update(patch)
+    .eq("recurring_group_id", groupId)
+    .gte("date", fromDate);
+  if (error) throw error;
+}
+
+export async function updateAllRecurring(
+  groupId: string,
+  patch: { amount?: number; label?: string | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from("finance_transactions")
+    .update(patch)
+    .eq("recurring_group_id", groupId);
   if (error) throw error;
 }

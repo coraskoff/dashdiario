@@ -16,6 +16,7 @@ export interface FinanceTransaction {
   kind: "entrada" | "saida";
   amount: number;
   label: string | null;
+  recurring_group_id: string | null;
 }
 
 export interface FinanceMonthInput {
@@ -34,4 +35,5 @@ export interface FinanceTransactionInput {
   kind: "entrada" | "saida";
   amount: number;
   label?: string | null;
+  recurring_group_id?: string | null;
 }
