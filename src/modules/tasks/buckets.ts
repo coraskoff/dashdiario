@@ -58,7 +58,7 @@ export function bucketOf(task: Task): Bucket {
   const today = todayIso();
   const tomorrow = tomorrowIso();
   const dayAfter = dayAfterTomorrowIso();
-  if (task.due_date <= today) return "today";
+  if (task.due_date === today) return "today";
   if (task.due_date === tomorrow) return "tomorrow";
   if (task.due_date === dayAfter) return "later";
   return "week";
