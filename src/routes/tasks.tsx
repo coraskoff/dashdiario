@@ -264,8 +264,8 @@ function TasksPage() {
   });
 
   const update = useMutation({
-    mutationFn: ({ id, title, description }: { id: string; title: string; description: string }) =>
-      updateTask(id, { title, description }),
+    mutationFn: ({ id, title, description, due_date, project_id }: { id: string; title: string; description: string; due_date: string | null; project_id: string | null }) =>
+      updateTask(id, { title, description, due_date, project_id }),
     onMutate: async ({ id, title, description }) => {
       await qc.cancelQueries({ queryKey: ["tasks"] });
       const prev = qc.getQueryData<Task[]>(["tasks"]);
@@ -369,7 +369,8 @@ function TasksPage() {
       setProject.mutate({ id, projectId }),
     editingId,
     onSaveEdit: (id: string, title: string, description: string) => {
-      update.mutate({ id, title, description });
+      const task = tasks.find((t) => t.id === id);
+      update.mutate({ id, title, description, due_date: task?.due_date ?? null, project_id: task?.project_id ?? null });
       setEditingId(null);
     },
     onCancelEdit: () => setEditingId(null),
