@@ -92,7 +92,7 @@ function NotesPage() {
   const setFolder = (id: string) =>
     navigate({ search: { folder: id === ALL ? undefined : id, note: undefined } });
   const setNote = (id: string | undefined) =>
-    navigate({ search: (prev) => ({ ...prev, note: id }) });
+    navigate({ search: (prev: SearchParams) => ({ ...prev, note: id }) });
 
   const newNoteMut = useMutation({
     mutationFn: () => createNote(folderId === ALL ? null : folderId),
