@@ -644,7 +644,7 @@ function MarkdownPreview({ content }: { content: string }) {
   );
 }
 
-/* ============ Mobile Shell (Apple Notes-like) ============ */
+/* ============ Mobile Shell ============ */
 
 function MobileShell({
   folders,
@@ -669,21 +669,15 @@ function MobileShell({
   onNewNote: () => void;
   onDeleteNote: (id: string) => void;
 }) {
-  const screen: "folders" | "list" | "editor" = selectedNote
-    ? "editor"
-    : folderId !== "__all__" || true
-      ? "list"
-      : "folders";
-  // We treat root /notes as folders screen if no folder param, otherwise list.
-  const isRoot = !Route.useSearch().folder && !Route.useSearch().note;
-  const realScreen: "folders" | "list" | "editor" = selectedNote
-    ? "editor"
-    : isRoot
-      ? "folders"
-      : "list";
+  const [showFolders, setShowFolders] = useState(false);
 
-  void screen;
-  const idx = realScreen === "folders" ? 0 : realScreen === "list" ? 1 : 2;
+  const selectFolder = (id: string) => {
+    setFolder(id);
+    setShowFolders(false);
+  };
+
+  // 0=pastas, 1=lista (default), 2=editor
+  const idx = showFolders ? 0 : selectedNote ? 2 : 1;
 
   return (
     <div className="-mx-6 -my-10 h-[calc(100dvh-3.5rem)] overflow-hidden">
@@ -691,29 +685,30 @@ function MobileShell({
         className="flex h-full w-[300%] transition-transform duration-300 ease-out"
         style={{ transform: `translateX(-${idx * (100 / 3)}%)` }}
       >
-        <div className="h-full w-1/3 overflow-y-auto">
+        <div className="h-full w-1/3 overflow-y-auto bg-background">
           <MobileFolders
             folders={folders}
             notes={notes}
-            onSelect={(id) => setFolder(id)}
+            activeId={folderId}
+            onSelect={selectFolder}
+            onClose={() => setShowFolders(false)}
           />
         </div>
-        <div className="h-full w-1/3">
+        <div className="h-full w-1/3 bg-background">
           <MobileNotesList
             folderName={folderName}
             notes={visibleNotes}
-            onBack={() => setFolder("__all__")}
             onSelect={(id) => setNote(id)}
             onNew={onNewNote}
+            onOpenFolders={() => setShowFolders(true)}
             onExport={() =>
               downloadNotesAsZip(visibleNotes, folderName).then(() =>
                 toast.success("Pasta exportada"),
               )
             }
-            isRoot={isRoot}
           />
         </div>
-        <div className="h-full w-1/3">
+        <div className="h-full w-1/3 bg-background">
           <Editor
             note={selectedNote}
             folders={folders}
@@ -730,11 +725,15 @@ function MobileShell({
 function MobileFolders({
   folders,
   notes,
+  activeId,
   onSelect,
+  onClose,
 }: {
   folders: NoteFolder[];
   notes: Note[];
+  activeId: string;
   onSelect: (id: string) => void;
+  onClose: () => void;
 }) {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
@@ -762,20 +761,30 @@ function MobileFolders({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-5 pb-3 pt-4">
-        <h1 className="text-[28px] font-bold tracking-tight">Notas</h1>
-      </div>
-      <div className="flex-1 overflow-y-auto px-3 pb-24">
+      <header className="flex h-14 items-center justify-between border-b border-border/60 px-4">
+        <span className="text-[15px] font-semibold">Pastas</span>
+        <button
+          onClick={() => setCreating(true)}
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground active:bg-secondary"
+          aria-label="Nova pasta"
+        >
+          <FolderPlus className="h-4 w-4" />
+        </button>
+      </header>
+      <div className="flex-1 overflow-y-auto px-3 pb-28 pt-2">
         <MobileFolderRow
           label="Todas as notas"
           count={notes.length}
-          onClick={() => onSelect("__all__")}
+          active={activeId === ALL}
+          onClick={() => onSelect(ALL)}
         />
+        <div className="my-1 h-px bg-border/40 mx-2" />
         {folders.map((f) => (
           <MobileFolderRow
             key={f.id}
             label={f.name}
             count={counts.get(f.id) ?? 0}
+            active={activeId === f.id}
             onClick={() => onSelect(f.id)}
             onDelete={() => {
               if (confirm(`Excluir pasta "${f.name}"?`)) {
@@ -790,7 +799,7 @@ function MobileFolders({
           />
         ))}
         {creating && (
-          <div className="mt-2 px-2">
+          <div className="mt-2 px-1">
             <Input
               autoFocus
               value={name}
@@ -798,10 +807,7 @@ function MobileFolders({
               onBlur={() => (name.trim() ? createMut.mutate(name) : setCreating(false))}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && name.trim()) createMut.mutate(name);
-                if (e.key === "Escape") {
-                  setName("");
-                  setCreating(false);
-                }
+                if (e.key === "Escape") { setName(""); setCreating(false); }
               }}
               placeholder="Nome da pasta"
               className="h-10 text-base"
@@ -809,14 +815,6 @@ function MobileFolders({
           </div>
         )}
       </div>
-      <button
-        onClick={() => setCreating(true)}
-        className="fixed bottom-5 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-foreground text-background shadow-lg active:scale-95 transition-transform"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        aria-label="Nova pasta"
-      >
-        <FolderPlus className="h-5 w-5" />
-      </button>
     </div>
   );
 }
@@ -824,38 +822,40 @@ function MobileFolders({
 function MobileFolderRow({
   label,
   count,
+  active,
   onClick,
   onDelete,
 }: {
   label: string;
   count: number;
+  active: boolean;
   onClick: () => void;
   onDelete?: () => void;
 }) {
   return (
     <div
       onClick={onClick}
-      className="flex min-h-[52px] items-center justify-between rounded-lg px-3 py-2 active:bg-secondary"
+      className={cn(
+        "flex min-h-[48px] items-center justify-between rounded-lg px-3 py-2 transition-colors active:bg-secondary",
+        active && "bg-secondary",
+      )}
     >
       <div className="flex items-center gap-3">
-        <Folder className="h-4 w-4 text-muted-foreground" />
-        <span className="text-[15px]">{label}</span>
+        <Folder className={cn("h-4 w-4", active ? "text-foreground" : "text-muted-foreground")} />
+        <span className={cn("text-[15px]", active ? "font-medium text-foreground" : "text-foreground")}>{label}</span>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <span className="text-[13px] tabular-nums text-muted-foreground">{count}</span>
         {onDelete && (
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            className="rounded p-1 text-muted-foreground"
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="rounded p-1 text-muted-foreground/60 active:text-foreground"
             aria-label="Excluir"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
       </div>
     </div>
   );
@@ -864,21 +864,21 @@ function MobileFolderRow({
 function MobileNotesList({
   folderName,
   notes,
-  onBack,
   onSelect,
   onNew,
+  onOpenFolders,
   onExport,
-  isRoot,
 }: {
   folderName: string;
   notes: Note[];
-  onBack: () => void;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onOpenFolders: () => void;
   onExport: () => void;
-  isRoot: boolean;
 }) {
   const [q, setQ] = useState("");
+  const touchStart = useRef({ x: 0, y: 0 });
+
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return notes;
@@ -887,34 +887,43 @@ function MobileNotesList({
     );
   }, [notes, q]);
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - touchStart.current.x;
+    const dy = e.changedTouches[0].clientY - touchStart.current.y;
+    const isHorizontal = Math.abs(dx) > 72 && Math.abs(dx) > Math.abs(dy) * 1.5;
+    if (!isHorizontal) return;
+    if (dx < 0) onOpenFolders();
+    else onNew();
+  };
+
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-center gap-2 px-2 pt-3">
-        {!isRoot && (
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1 rounded p-2 text-foreground active:bg-secondary"
-            aria-label="Voltar"
-          >
-            <ChevronLeft className="h-5 w-5" />
-            <span className="text-[15px]">Pastas</span>
-          </button>
-        )}
-        <div className="ml-auto flex items-center">
-          <button
-            onClick={onExport}
-            disabled={notes.length === 0}
-            className="rounded p-2 text-muted-foreground active:bg-secondary disabled:opacity-30"
-            aria-label="Exportar"
-          >
-            <Download className="h-4 w-4" />
-          </button>
-        </div>
+    <div
+      className="flex h-full flex-col"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      <header className="flex h-14 items-center justify-between border-b border-border/60 px-4">
+        <button
+          onClick={onOpenFolders}
+          className="flex items-center gap-1 text-[14px] text-muted-foreground transition-colors active:text-foreground"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Pastas
+        </button>
+        <span className="max-w-[140px] truncate text-[15px] font-semibold">{folderName}</span>
+        <button
+          onClick={onNew}
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground active:bg-secondary"
+          aria-label="Nova nota"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
       </header>
-      <div className="px-5 pb-2 pt-1">
-        <h1 className="truncate text-[28px] font-bold tracking-tight">{folderName}</h1>
-      </div>
-      <div className="px-3 pb-2">
+      <div className="px-3 py-2">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -925,45 +934,55 @@ function MobileNotesList({
           />
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-3 pb-24">
+      <div className="flex-1 overflow-y-auto pb-28">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center pt-16 text-center">
-            <span className="mb-2 font-mono text-3xl text-muted-foreground/60">·</span>
-            <p className="text-[14px] text-muted-foreground">Nenhuma nota</p>
+          <div className="flex flex-col items-center pt-16 text-center px-6">
+            <span className="mb-2 font-mono text-2xl text-muted-foreground/40">·</span>
+            <p className="text-[14px] text-muted-foreground">Nenhuma nota ainda</p>
+            <button
+              onClick={onNew}
+              className="mt-3 text-[13px] font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Criar a primeira
+            </button>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-border/60 bg-background">
-            {filtered.map((n, i) => (
-              <button
-                key={n.id}
-                onClick={() => onSelect(n.id)}
-                className={cn(
-                  "block w-full px-4 py-3 text-left active:bg-secondary",
-                  i !== 0 && "border-t border-border/60",
-                )}
-              >
-                <div className="truncate text-[15px] font-medium">
-                  {n.title.trim() || "Sem título"}
-                </div>
-                <div className="mt-0.5 flex items-center gap-2 text-[12px] text-muted-foreground">
-                  <span className="tabular-nums">{formatRelative(n.updated_at)}</span>
-                  <span className="truncate">
-                    {stripMarkdown(n.content).slice(0, 60) || "Sem conteúdo"}
-                  </span>
-                </div>
-              </button>
-            ))}
+          <div className="px-3">
+            <div className="overflow-hidden rounded-xl border border-border/60 bg-background">
+              {filtered.map((n, i) => (
+                <button
+                  key={n.id}
+                  onClick={() => onSelect(n.id)}
+                  className={cn(
+                    "block w-full px-4 py-3 text-left transition-colors active:bg-secondary",
+                    i !== 0 && "border-t border-border/60",
+                  )}
+                >
+                  <div className="truncate text-[15px] font-medium">
+                    {n.title.trim() || "Sem título"}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-2 text-[12px] text-muted-foreground">
+                    <span className="tabular-nums">{formatRelative(n.updated_at)}</span>
+                    <span className="truncate">
+                      {stripMarkdown(n.content).slice(0, 60) || "Sem conteúdo"}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
+        <div className="flex items-center justify-between px-6 py-5 text-[11px] text-muted-foreground/35 select-none">
+          <span className="flex items-center gap-0.5">
+            <ChevronLeft className="h-3 w-3" />
+            Pastas
+          </span>
+          <span className="flex items-center gap-0.5">
+            Nova nota
+            <ChevronRight className="h-3 w-3" />
+          </span>
+        </div>
       </div>
-      <button
-        onClick={onNew}
-        className="fixed bottom-5 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-foreground text-background shadow-lg active:scale-95 transition-transform"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        aria-label="Nova nota"
-      >
-        <Plus className="h-5 w-5" />
-      </button>
     </div>
   );
 }
