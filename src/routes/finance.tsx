@@ -962,10 +962,15 @@ function Pulse({
   const spentSoFar = elapsed.reduce((s, r) => s + r.diario, 0);
   const targetSoFar = elapsed.reduce((s, r) => s + suggestedDaily, 0);
   const insightDelta = spentSoFar - targetSoFar; // > 0 = acima da meta
-  const remainingDays = rows.filter((r) => r.isFuture).length;
+  const futureDays = rows.filter((r) => r.isFuture);
+  const committedFuture = futureDays
+    .filter((r) => r.hasOverride)
+    .reduce((s, r) => s + r.diario, 0);
+  const freeFutureDays = futureDays.filter((r) => !r.hasOverride);
   const totalTarget = rows.reduce((s, r) => s + suggestedDaily, 0);
-  const remainingBudget = totalTarget - spentSoFar;
-  const recalibrated = remainingDays > 0 ? remainingBudget / remainingDays : 0;
+  const remainingBudget = totalTarget - spentSoFar - committedFuture;
+  const recalibrated = freeFutureDays.length > 0 ? remainingBudget / freeFutureDays.length : 0;
+  const remainingDays = freeFutureDays.length;
   const isOver = insightDelta > 0.5;
 
   const pastRows = rows.filter((r) => !r.isFuture && !r.isToday);
