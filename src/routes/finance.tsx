@@ -1136,7 +1136,7 @@ function Pulse({
                               value={r.diario}
                               isOverride={r.hasOverride}
                               suggested={suggestedDaily}
-                              onCommit={(v) => onUpdateDiario(r.date, v === 0 ? null : v)}
+                              onCommit={(v) => onUpdateDiario(r.date, v)}
                             />
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                               <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -1283,7 +1283,7 @@ function Pulse({
                       value={r.diario}
                       isOverride={r.hasOverride}
                       suggested={suggestedDaily}
-                      onCommit={(v) => onUpdateDiario(r.date, v === 0 ? null : v)}
+                      onCommit={(v) => onUpdateDiario(r.date, v)}
                     />
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -1379,21 +1379,27 @@ function DiarioInline({
   value: number;
   isOverride: boolean;
   suggested: number;
-  onCommit: (v: number) => void;
+  onCommit: (v: number | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  function commitDraft() {
+    const trimmed = draft.trim();
+    onCommit(trimmed === "" ? null : parseAmount(trimmed));
+  }
+
   useEffect(() => {
     if (editing) {
-      setDraft(value > 0 ? formatInput(value) : "");
+      // Se há override (inclusive zero), mostra o valor atual; senão abre em branco
+      setDraft(isOverride ? formatInput(value) : "");
       requestAnimationFrame(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
       });
     }
-  }, [editing, value]);
+  }, [editing, value, isOverride]);
 
   if (editing) {
     return (
@@ -1404,13 +1410,13 @@ function DiarioInline({
         placeholder={formatInput(suggested)}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
-          onCommit(parseAmount(draft));
+          commitDraft();
           setEditing(false);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            onCommit(parseAmount(draft));
+            commitDraft();
             setEditing(false);
           } else if (e.key === "Escape") {
             e.preventDefault();
