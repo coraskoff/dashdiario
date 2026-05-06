@@ -617,7 +617,7 @@ function EditorInner({
               }
             }}
             placeholder="Título"
-            className="flex-1 bg-transparent text-[15px] font-semibold outline-none placeholder:text-muted-foreground/60"
+            className="flex-1 bg-transparent text-[15px] font-bold outline-none placeholder:text-muted-foreground/60 [font-family:'iA_Writer_Duospace',ui-monospace,monospace]"
           />
           <span className="hidden text-[11px] text-muted-foreground sm:block">
             {status === "saving" ? "Salvando…" : status === "saved" ? "Salvo" : ""}
@@ -690,7 +690,7 @@ function EditorInner({
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Comece a escrever em markdown…"
-              className="block min-h-[80vh] w-full resize-none bg-transparent px-8 py-8 font-sans text-[15px] leading-[1.85] tracking-[0.003em] text-foreground outline-none placeholder:text-muted-foreground/40"
+              className="block min-h-[80vh] w-full resize-none bg-transparent px-8 py-8 text-[15px] leading-[1.85] text-foreground outline-none placeholder:text-muted-foreground/40 [font-family:'iA_Writer_Duospace',ui-monospace,monospace]"
             />
           </div>
         ) : (
@@ -732,7 +732,7 @@ function MarkdownPreview({ content, focusMode = false }: { content: string; focu
   return (
     <div
       className={cn(
-        "markdown-preview mx-auto px-8 py-8 text-[15px] leading-[1.8] text-foreground transition-[max-width] duration-300",
+        "markdown-preview mx-auto px-8 py-8 text-[15px] leading-[1.8] text-foreground transition-[max-width] duration-300 [font-family:'iA_Writer_Duospace',ui-monospace,monospace]",
         focusMode ? "max-w-2xl" : "max-w-3xl",
       )}
     >

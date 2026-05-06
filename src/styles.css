@@ -2,6 +2,35 @@
 @source "../src";
 @import "tw-animate-css";
 
+@font-face {
+  font-family: "iA Writer Duospace";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/iAWriterDuoS-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "iA Writer Duospace";
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+  src: url("/fonts/iAWriterDuoS-Italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "iA Writer Duospace";
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/iAWriterDuoS-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "iA Writer Duospace";
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+  src: url("/fonts/iAWriterDuoS-BoldItalic.woff2") format("woff2");
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /*
