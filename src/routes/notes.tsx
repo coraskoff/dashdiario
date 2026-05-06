@@ -698,9 +698,11 @@ function MobileShell({
           <MobileNotesList
             folderName={folderName}
             notes={visibleNotes}
+            folders={folders}
             onSelect={(id) => setNote(id)}
             onNew={onNewNote}
             onOpenFolders={() => setShowFolders(true)}
+            onDelete={onDeleteNote}
             onExport={() =>
               downloadNotesAsZip(visibleNotes, folderName).then(() =>
                 toast.success("Pasta exportada"),
@@ -864,17 +866,21 @@ function MobileFolderRow({
 function MobileNotesList({
   folderName,
   notes,
+  folders,
   onSelect,
   onNew,
   onOpenFolders,
   onExport,
+  onDelete,
 }: {
   folderName: string;
   notes: Note[];
+  folders: NoteFolder[];
   onSelect: (id: string) => void;
   onNew: () => void;
   onOpenFolders: () => void;
   onExport: () => void;
+  onDelete: (id: string) => void;
 }) {
   const [q, setQ] = useState("");
   const touchStart = useRef({ x: 0, y: 0 });
@@ -950,24 +956,29 @@ function MobileNotesList({
           <div className="px-3">
             <div className="overflow-hidden rounded-xl border border-border/60 bg-background">
               {filtered.map((n, i) => (
-                <button
+                <div
                   key={n.id}
-                  onClick={() => onSelect(n.id)}
                   className={cn(
-                    "block w-full px-4 py-3 text-left transition-colors active:bg-secondary",
+                    "flex items-stretch",
                     i !== 0 && "border-t border-border/60",
                   )}
                 >
-                  <div className="truncate text-[15px] font-medium">
-                    {n.title.trim() || "Sem título"}
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-[12px] text-muted-foreground">
-                    <span className="tabular-nums">{formatRelative(n.updated_at)}</span>
-                    <span className="truncate">
-                      {stripMarkdown(n.content).slice(0, 60) || "Sem conteúdo"}
-                    </span>
-                  </div>
-                </button>
+                  <button
+                    onClick={() => onSelect(n.id)}
+                    className="min-w-0 flex-1 px-4 py-3 text-left transition-colors active:bg-secondary"
+                  >
+                    <div className="truncate text-[15px] font-medium">
+                      {n.title.trim() || "Sem título"}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2 text-[12px] text-muted-foreground">
+                      <span className="tabular-nums">{formatRelative(n.updated_at)}</span>
+                      <span className="truncate">
+                        {stripMarkdown(n.content).slice(0, 60) || "Sem conteúdo"}
+                      </span>
+                    </div>
+                  </button>
+                  <NoteCardMenu note={n} folders={folders} onDelete={onDelete} />
+                </div>
               ))}
             </div>
           </div>
@@ -984,5 +995,59 @@ function MobileNotesList({
         </div>
       </div>
     </div>
+  );
+}
+
+function NoteCardMenu({
+  note,
+  folders,
+  onDelete,
+}: {
+  note: Note;
+  folders: NoteFolder[];
+  onDelete: (id: string) => void;
+}) {
+  const qc = useQueryClient();
+
+  const moveTo = async (folderId: string | null) => {
+    await updateNote(note.id, { folder_id: folderId });
+    qc.setQueryData<Note[]>(["notes"], (old) =>
+      (old ?? []).map((n) => (n.id === note.id ? { ...n, folder_id: folderId } : n)),
+    );
+    toast.success("Nota movida");
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="flex items-center px-3 text-muted-foreground/50 transition-colors active:bg-secondary active:text-foreground"
+          aria-label="Opções"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <div className="px-2 py-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+          Mover para
+        </div>
+        <DropdownMenuItem onClick={() => moveTo(null)}>Sem pasta</DropdownMenuItem>
+        {folders.map((f) => (
+          <DropdownMenuItem key={f.id} onClick={() => moveTo(f.id)}>
+            {f.name}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          onClick={() => {
+            if (confirm("Excluir esta nota?")) onDelete(note.id);
+          }}
+        >
+          <Trash2 className="mr-2 h-3.5 w-3.5" />
+          Excluir
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
