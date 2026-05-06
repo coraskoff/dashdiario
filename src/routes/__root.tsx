@@ -7,9 +7,26 @@ import {
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
-import { CheckSquare, Wallet, BookOpen } from "lucide-react";
+import { CheckSquare, Wallet, BookOpen, Plus } from "lucide-react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import appCss from "../styles.css?url";
+
+interface MobileFabCtx {
+  setFab: (action: (() => void) | null) => void;
+}
+
+export const MobileFabContext = createContext<MobileFabCtx>({ setFab: () => {} });
+
+export function useMobileFab(action: (() => void) | null) {
+  const { setFab } = useContext(MobileFabContext);
+  const actionRef = useRef(action);
+  actionRef.current = action;
+  useEffect(() => {
+    setFab(() => actionRef.current?.());
+    return () => setFab(null);
+  }, [setFab]);
+}
 
 function NotFoundComponent() {
   return (
@@ -109,24 +126,40 @@ function RootComponent() {
 }
 
 function AppLayout({ children }: { children: React.ReactNode }) {
+  const [fabAction, setFabActionState] = useState<(() => void) | null>(null);
+  const setFab = useCallback((action: (() => void) | null) => {
+    setFabActionState(action ? () => action : null);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-          <Link to="/tasks" className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="inline-block h-2 w-2 rounded-full bg-foreground" />
-            Dash
-          </Link>
-          <nav className="hidden md:flex items-center gap-1 text-sm">
-            <NavLink to="/tasks">Tarefas</NavLink>
-            <NavLink to="/finance">Finanças</NavLink>
-            <NavLink to="/notes">Notas</NavLink>
-          </nav>
-        </div>
-      </header>
-      <main className="mx-auto max-w-5xl px-6 py-10 pb-28 md:pb-10">{children}</main>
-      <MobileNav />
-    </div>
+    <MobileFabContext.Provider value={{ setFab }}>
+      <div className="min-h-screen bg-background">
+        <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
+          <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
+            <Link to="/tasks" className="flex items-center gap-2 font-semibold tracking-tight">
+              <span className="inline-block h-2 w-2 rounded-full bg-foreground" />
+              Dash
+            </Link>
+            <nav className="hidden md:flex items-center gap-1 text-sm">
+              <NavLink to="/tasks">Tarefas</NavLink>
+              <NavLink to="/finance">Finanças</NavLink>
+              <NavLink to="/notes">Notas</NavLink>
+            </nav>
+          </div>
+        </header>
+        <main className="mx-auto max-w-5xl px-6 py-10 pb-28 md:pb-10">{children}</main>
+        <MobileNav />
+        {fabAction && (
+          <button
+            onClick={fabAction}
+            aria-label="Novo"
+            className="md:hidden fixed bottom-24 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-foreground text-background shadow-lg shadow-black/15 transition-transform active:scale-95"
+          >
+            <Plus size={20} strokeWidth={2} />
+          </button>
+        )}
+      </div>
+    </MobileFabContext.Provider>
   );
 }
 

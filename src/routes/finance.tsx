@@ -62,6 +62,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { useMobileFab } from "@/routes/__root";
 
 export const Route = createFileRoute("/finance")({
   component: FinancePage,
@@ -244,10 +245,14 @@ function FinancePage() {
 
   const suggested = suggestedDaily(monthConfig?.variable_amount ?? 0, month);
 
+  const [mobileFabOpen, setMobileFabOpen] = useState(false);
+
   const openNew = (k: "entrada" | "saida" | "diario") => {
     if (k === "diario") setDiarioQuickOpen(true);
     else setPanel(k);
   };
+
+  useMobileFab(() => setMobileFabOpen(true));
 
   const todayRow = rows.find((r) => r.isToday) ?? rows[rows.length - 1];
 
@@ -323,7 +328,22 @@ function FinancePage() {
         }}
       />
 
-      <MobileNewFab onNew={openNew} />
+      <Drawer open={mobileFabOpen} onOpenChange={setMobileFabOpen}>
+        <DrawerContent>
+          <DrawerHeader className="px-4 pt-4">
+            <DrawerTitle className="text-left text-base">Novo lançamento</DrawerTitle>
+          </DrawerHeader>
+          <div className="px-3 pb-6">
+            <NewActionList
+              size="lg"
+              onPick={(k) => {
+                setMobileFabOpen(false);
+                openNew(k);
+              }}
+            />
+          </div>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }
@@ -412,47 +432,6 @@ function DesktopNewButton({
 }
 
 /* ---------- new action FAB (mobile) ---------- */
-function MobileNewFab({
-  onNew,
-}: {
-  onNew: (k: "entrada" | "saida" | "diario") => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Novo lançamento"
-        className={cn(
-          "fixed bottom-5 left-1/2 z-40 -translate-x-1/2 md:hidden",
-          "flex h-14 w-14 items-center justify-center rounded-full",
-          "bg-primary text-primary-foreground shadow-lg shadow-black/20",
-          "ring-4 ring-background transition-transform active:scale-95",
-        )}
-      >
-        <Plus className="h-6 w-6" />
-      </button>
-      <Drawer open={open} onOpenChange={setOpen}>
-        <DrawerContent>
-          <DrawerHeader className="px-4 pt-4">
-            <DrawerTitle className="text-left text-base">Novo lançamento</DrawerTitle>
-          </DrawerHeader>
-          <div className="px-3 pb-6">
-            <NewActionList
-              size="lg"
-              onPick={(k) => {
-                setOpen(false);
-                onNew(k);
-              }}
-            />
-          </div>
-        </DrawerContent>
-      </Drawer>
-    </>
-  );
-}
-
 function NewActionList({
   onPick,
   size = "md",

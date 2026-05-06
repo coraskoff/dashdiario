@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
+import { useMobileFab } from "@/routes/__root";
 import { toast } from "sonner";
 import { ArrowRight, Calendar as CalendarIcon, Check, CheckCheck, FolderInput, GripVertical, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { Pulse } from "@/components/Pulse";
@@ -98,6 +99,8 @@ function TasksPage() {
   });
 
   const [activeProject, setActiveProject] = useState<ActiveProject>("all");
+  const todayQuickAddRef = useRef<HTMLInputElement>(null);
+  useMobileFab(() => todayQuickAddRef.current?.focus());
 
   // Filter tasks by active project tab
   const visibleTasks = useMemo(() => {
@@ -451,6 +454,7 @@ function TasksPage() {
             create.mutate({ title, due_date: todayIso(), project_id: newTaskProjectId })
           }
           loading={isLoading}
+          quickAddRef={todayQuickAddRef}
           {...columnHandlers}
           emptyText="Dia limpo. Capriche em uma coisa só."
         />
@@ -783,6 +787,7 @@ function DayColumn({
   onAdd,
   loading,
   emptyText,
+  quickAddRef,
   ...handlers
 }: ColumnHandlers & {
   dayNumber: number | null;
@@ -794,6 +799,7 @@ function DayColumn({
   onAdd: (title: string) => void;
   loading: boolean;
   emptyText: string;
+  quickAddRef?: React.RefObject<HTMLInputElement | null>;
 }) {
   const [drag, setDrag] = useState(false);
   const [insertAt, setInsertAt] = useState<number | null>(null);
@@ -875,6 +881,7 @@ function DayColumn({
         <QuickAdd
           placeholder={accent ? "O que move o dia?" : "Adicionar…"}
           onAdd={onAdd}
+          inputRef={quickAddRef}
         />
       </div>
 
@@ -923,9 +930,11 @@ function DayColumn({
 function QuickAdd({
   placeholder,
   onAdd,
+  inputRef,
 }: {
   placeholder: string;
   onAdd: (title: string) => void;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }) {
   const [v, setV] = useState("");
   function submit(e: React.FormEvent) {
@@ -945,6 +954,7 @@ function QuickAdd({
     >
       <Plus className="h-3.5 w-3.5 text-muted-foreground" />
       <Input
+        ref={inputRef}
         value={v}
         onChange={(e) => setV(e.target.value)}
         placeholder={placeholder}

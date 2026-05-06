@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMobileFab } from "@/routes/__root";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
@@ -101,6 +102,8 @@ function NotesPage() {
       setNote(n.id);
     },
   });
+
+  useMobileFab(() => newNoteMut.mutate());
 
   const deleteNoteMut = useMutation({
     mutationFn: (id: string) => deleteNote(id),
