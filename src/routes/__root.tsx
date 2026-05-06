@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
+import { CheckSquare, Wallet, BookOpen } from "lucide-react";
 
 import appCss from "../styles.css?url";
 
@@ -116,14 +117,15 @@ function AppLayout({ children }: { children: React.ReactNode }) {
             <span className="inline-block h-2 w-2 rounded-full bg-foreground" />
             Dash
           </Link>
-          <nav className="flex items-center gap-1 text-sm">
+          <nav className="hidden md:flex items-center gap-1 text-sm">
             <NavLink to="/tasks">Tarefas</NavLink>
             <NavLink to="/finance">Finanças</NavLink>
             <NavLink to="/notes">Notas</NavLink>
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-6 py-10">{children}</main>
+      <main className="mx-auto max-w-5xl px-6 py-10 pb-28 md:pb-10">{children}</main>
+      <MobileNav />
     </div>
   );
 }
@@ -136,5 +138,35 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
     >
       {children}
     </Link>
+  );
+}
+
+const NAV_ITEMS = [
+  { to: "/tasks", label: "Tarefas", icon: CheckSquare },
+  { to: "/finance", label: "Finanças", icon: Wallet },
+  { to: "/notes", label: "Notas", icon: BookOpen },
+] as const;
+
+function MobileNav() {
+  return (
+    <nav
+      className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+    >
+      <div className="flex items-center gap-0.5 rounded-full border border-border/60 bg-background/95 px-2 py-2 shadow-xl shadow-black/10 backdrop-blur-xl">
+        {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+          <Link
+            key={to}
+            to={to}
+            className="group relative flex items-center gap-1.5 rounded-full px-3 py-2 text-sm text-muted-foreground transition-all duration-200 hover:text-foreground data-[status=active]:bg-secondary data-[status=active]:text-foreground"
+          >
+            <Icon size={17} strokeWidth={1.75} />
+            <span className="max-w-0 overflow-hidden whitespace-nowrap transition-all duration-200 group-data-[status=active]:max-w-[4rem]">
+              {label}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </nav>
   );
 }
