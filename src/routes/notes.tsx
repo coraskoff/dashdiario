@@ -491,6 +491,12 @@ function EditorInner({
   const [content, setContent] = useState(note.content);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const titleRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!note.title) titleRef.current?.focus();
+  }, [note.id]);
 
   // debounce save
   useEffect(() => {
@@ -541,8 +547,15 @@ function EditorInner({
           </button>
         )}
         <input
+          ref={titleRef}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              contentRef.current?.focus();
+            }
+          }}
           placeholder="Título"
           className="flex-1 bg-transparent text-[15px] font-semibold outline-none placeholder:text-muted-foreground/60"
         />
@@ -592,6 +605,7 @@ function EditorInner({
       <div className="flex-1 overflow-y-auto">
         {mode === "edit" ? (
           <textarea
+            ref={contentRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Comece a escrever em markdown…"
