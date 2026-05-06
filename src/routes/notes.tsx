@@ -10,6 +10,7 @@ import {
   Download,
   Folder,
   FolderPlus,
+  Maximize2,
   Minimize2,
   MoreHorizontal,
   Pencil,
@@ -139,36 +140,54 @@ function NotesPage() {
     );
   }
 
+  const ease = "cubic-bezier(0.4,0,0.2,1)";
+
   return (
-    <div
-      className="-mx-6 -my-10 grid h-[calc(100dvh-3.5rem)] border-t border-border/60 transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
-      style={{ gridTemplateColumns: focusMode ? "0px 0px 1fr" : "220px 320px 1fr" }}
-    >
-      <FoldersSidebar
-        folders={folders}
-        notes={notes}
-        activeId={folderId}
-        onSelect={setFolder}
-      />
-      <NotesList
-        notes={visibleNotes}
-        folderName={folderName}
-        selectedId={selectedNoteId}
-        onSelect={(id) => setNote(id)}
-        onNew={() => newNoteMut.mutate()}
-        onExportFolder={() =>
-          downloadNotesAsZip(visibleNotes, folderName).then(() =>
-            toast.success("Pasta exportada"),
-          )
-        }
-      />
-      <Editor
-        note={selectedNote}
-        folders={folders}
-        onDelete={(id) => deleteNoteMut.mutate(id)}
-        focusMode={focusMode}
-        onExitFocusMode={() => setFocusMode(false)}
-      />
+    <div className="-mx-6 -my-10 flex h-[calc(100dvh-3.5rem)] border-t border-border/60">
+      <div
+        className="shrink-0 overflow-hidden"
+        style={{
+          width: focusMode ? "0px" : "220px",
+          transition: `width 300ms ${ease}`,
+        }}
+      >
+        <FoldersSidebar
+          folders={folders}
+          notes={notes}
+          activeId={folderId}
+          onSelect={setFolder}
+        />
+      </div>
+      <div
+        className="shrink-0 overflow-hidden"
+        style={{
+          width: focusMode ? "0px" : "320px",
+          transition: `width 300ms ${ease}`,
+        }}
+      >
+        <NotesList
+          notes={visibleNotes}
+          folderName={folderName}
+          selectedId={selectedNoteId}
+          onSelect={(id) => setNote(id)}
+          onNew={() => newNoteMut.mutate()}
+          onExportFolder={() =>
+            downloadNotesAsZip(visibleNotes, folderName).then(() =>
+              toast.success("Pasta exportada"),
+            )
+          }
+        />
+      </div>
+      <div className="min-w-0 flex-1">
+        <Editor
+          note={selectedNote}
+          folders={folders}
+          onDelete={(id) => deleteNoteMut.mutate(id)}
+          focusMode={focusMode}
+          onEnterFocusMode={() => setFocusMode(true)}
+          onExitFocusMode={() => setFocusMode(false)}
+        />
+      </div>
     </div>
   );
 }
@@ -231,7 +250,7 @@ function FoldersSidebar({
   }, [notes]);
 
   return (
-    <aside className="flex flex-col overflow-hidden border-r border-border/60 bg-background">
+    <aside className="flex h-full w-full flex-col border-r border-border/60 bg-background">
       <div className="flex h-12 items-center justify-between px-4 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
         Pastas
         <button
@@ -359,7 +378,7 @@ function NotesList({
   }, [notes, q]);
 
   return (
-    <div className="flex flex-col overflow-hidden border-r border-border/60">
+    <div className="flex h-full w-full flex-col border-r border-border/60">
       <div className="flex h-12 items-center justify-between px-4">
         <div className="truncate text-[13px] font-medium">{folderName}</div>
         <div className="flex items-center gap-1">
@@ -468,6 +487,7 @@ function Editor({
   mobile = false,
   onBack,
   focusMode = false,
+  onEnterFocusMode,
   onExitFocusMode,
 }: {
   note: Note | null;
@@ -476,6 +496,7 @@ function Editor({
   mobile?: boolean;
   onBack?: () => void;
   focusMode?: boolean;
+  onEnterFocusMode?: () => void;
   onExitFocusMode?: () => void;
 }) {
   if (!note) {
@@ -486,7 +507,7 @@ function Editor({
       </div>
     );
   }
-  return <EditorInner key={note.id} note={note} folders={folders} onDelete={onDelete} mobile={mobile} onBack={onBack} focusMode={focusMode} onExitFocusMode={onExitFocusMode} />;
+  return <EditorInner key={note.id} note={note} folders={folders} onDelete={onDelete} mobile={mobile} onBack={onBack} focusMode={focusMode} onEnterFocusMode={onEnterFocusMode} onExitFocusMode={onExitFocusMode} />;
 }
 
 function EditorInner({
@@ -496,6 +517,7 @@ function EditorInner({
   mobile,
   onBack,
   focusMode = false,
+  onEnterFocusMode,
   onExitFocusMode,
 }: {
   note: Note;
@@ -504,6 +526,7 @@ function EditorInner({
   mobile: boolean;
   onBack?: () => void;
   focusMode?: boolean;
+  onEnterFocusMode?: () => void;
   onExitFocusMode?: () => void;
 }) {
   const qc = useQueryClient();
@@ -562,8 +585,8 @@ function EditorInner({
     <div className="flex h-full flex-col bg-background">
       <header
         className={cn(
-          "group flex items-center gap-2 border-b border-border/60 px-4",
-          mobile ? "h-12" : "h-12",
+          "group h-12 border-b border-border/60",
+          mobile ? "flex items-center gap-2 px-4" : "flex items-center",
         )}
       >
         {mobile && (
@@ -575,33 +598,45 @@ function EditorInner({
             <ChevronLeft className="h-4 w-4" />
           </button>
         )}
-        <input
-          ref={titleRef}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === "Tab") {
-              e.preventDefault();
-              contentRef.current?.focus();
-            }
-          }}
-          placeholder="Título"
-          className="flex-1 bg-transparent text-[15px] font-semibold outline-none placeholder:text-muted-foreground/60"
-        />
-        <span className="hidden text-[11px] text-muted-foreground sm:block">
-          {status === "saving" ? "Salvando…" : status === "saved" ? "Salvo" : ""}
-        </span>
-        {focusMode && !mobile && (
-          <button
-            onClick={onExitFocusMode}
-            className="rounded p-1.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-secondary hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Sair do modo foco (Esc)"
-            title="Sair do modo foco (Esc)"
-          >
-            <Minimize2 className="h-3.5 w-3.5" />
-          </button>
-        )}
-        <SegmentedToggle value={mode} onChange={setMode} />
+        <div
+          className={cn(
+            "flex items-center gap-2",
+            !mobile && focusMode
+              ? "mx-auto w-full max-w-2xl px-8"
+              : "flex-1 px-4",
+          )}
+        >
+          <input
+            ref={titleRef}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                contentRef.current?.focus();
+              }
+            }}
+            placeholder="Título"
+            className="flex-1 bg-transparent text-[15px] font-semibold outline-none placeholder:text-muted-foreground/60"
+          />
+          <span className="hidden text-[11px] text-muted-foreground sm:block">
+            {status === "saving" ? "Salvando…" : status === "saved" ? "Salvo" : ""}
+          </span>
+          {!mobile && (
+            <button
+              onClick={focusMode ? onExitFocusMode : onEnterFocusMode}
+              className="rounded p-1.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-secondary hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring"
+              aria-label={focusMode ? "Sair do modo foco (Esc)" : "Entrar no modo foco"}
+              title={focusMode ? "Sair do modo foco (Esc)" : "Entrar no modo foco"}
+            >
+              {focusMode ? (
+                <Minimize2 className="h-3.5 w-3.5" />
+              ) : (
+                <Maximize2 className="h-3.5 w-3.5" />
+              )}
+            </button>
+          )}
+          <SegmentedToggle value={mode} onChange={setMode} />
         <button
           onClick={() => downloadNoteAsTxt({ ...note, title, content })}
           className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
@@ -640,6 +675,7 @@ function EditorInner({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </header>
       <div className="flex-1 overflow-y-auto">
         {mode === "edit" ? (
