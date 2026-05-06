@@ -82,7 +82,6 @@ export type Database = {
           id: string
           kind: string
           label: string | null
-          recurring_group_id: string | null
           updated_at: string
         }
         Insert: {
@@ -92,7 +91,6 @@ export type Database = {
           id?: string
           kind: string
           label?: string | null
-          recurring_group_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -102,7 +100,6 @@ export type Database = {
           id?: string
           kind?: string
           label?: string | null
-          recurring_group_id?: string | null
           updated_at?: string
         }
         Relationships: []
