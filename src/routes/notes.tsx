@@ -896,7 +896,7 @@ function MobileNotesList({
     const dy = e.changedTouches[0].clientY - touchStart.current.y;
     const isHorizontal = Math.abs(dx) > 72 && Math.abs(dx) > Math.abs(dy) * 1.5;
     if (!isHorizontal) return;
-    if (dx < 0) onOpenFolders();
+    if (dx > 0) onOpenFolders();
     else onNew();
   };
 
