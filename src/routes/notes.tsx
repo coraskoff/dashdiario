@@ -10,6 +10,7 @@ import {
   Download,
   Folder,
   FolderPlus,
+  Minimize2,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -71,6 +72,8 @@ function NotesPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const qc = useQueryClient();
 
+  const [focusMode, setFocusMode] = useState(false);
+
   const foldersQ = useQuery({ queryKey: ["note_folders"], queryFn: fetchFolders });
   const notesQ = useQuery({ queryKey: ["notes"], queryFn: fetchNotes });
 
@@ -100,6 +103,7 @@ function NotesPage() {
     onSuccess: (n) => {
       qc.setQueryData<Note[]>(["notes"], (old) => [n, ...(old ?? [])]);
       setNote(n.id);
+      setFocusMode(true);
     },
   });
 
@@ -136,7 +140,10 @@ function NotesPage() {
   }
 
   return (
-    <div className="-mx-6 -my-10 grid h-[calc(100dvh-3.5rem)] grid-cols-[220px_320px_1fr] border-t border-border/60">
+    <div
+      className="-mx-6 -my-10 grid h-[calc(100dvh-3.5rem)] border-t border-border/60 transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
+      style={{ gridTemplateColumns: focusMode ? "0px 0px 1fr" : "220px 320px 1fr" }}
+    >
       <FoldersSidebar
         folders={folders}
         notes={notes}
@@ -159,6 +166,8 @@ function NotesPage() {
         note={selectedNote}
         folders={folders}
         onDelete={(id) => deleteNoteMut.mutate(id)}
+        focusMode={focusMode}
+        onExitFocusMode={() => setFocusMode(false)}
       />
     </div>
   );
@@ -222,7 +231,7 @@ function FoldersSidebar({
   }, [notes]);
 
   return (
-    <aside className="flex flex-col border-r border-border/60 bg-background">
+    <aside className="flex flex-col overflow-hidden border-r border-border/60 bg-background">
       <div className="flex h-12 items-center justify-between px-4 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
         Pastas
         <button
@@ -350,7 +359,7 @@ function NotesList({
   }, [notes, q]);
 
   return (
-    <div className="flex flex-col border-r border-border/60">
+    <div className="flex flex-col overflow-hidden border-r border-border/60">
       <div className="flex h-12 items-center justify-between px-4">
         <div className="truncate text-[13px] font-medium">{folderName}</div>
         <div className="flex items-center gap-1">
@@ -458,12 +467,16 @@ function Editor({
   onDelete,
   mobile = false,
   onBack,
+  focusMode = false,
+  onExitFocusMode,
 }: {
   note: Note | null;
   folders: NoteFolder[];
   onDelete: (id: string) => void;
   mobile?: boolean;
   onBack?: () => void;
+  focusMode?: boolean;
+  onExitFocusMode?: () => void;
 }) {
   if (!note) {
     return (
@@ -473,7 +486,7 @@ function Editor({
       </div>
     );
   }
-  return <EditorInner key={note.id} note={note} folders={folders} onDelete={onDelete} mobile={mobile} onBack={onBack} />;
+  return <EditorInner key={note.id} note={note} folders={folders} onDelete={onDelete} mobile={mobile} onBack={onBack} focusMode={focusMode} onExitFocusMode={onExitFocusMode} />;
 }
 
 function EditorInner({
@@ -482,12 +495,16 @@ function EditorInner({
   onDelete,
   mobile,
   onBack,
+  focusMode = false,
+  onExitFocusMode,
 }: {
   note: Note;
   folders: NoteFolder[];
   onDelete: (id: string) => void;
   mobile: boolean;
   onBack?: () => void;
+  focusMode?: boolean;
+  onExitFocusMode?: () => void;
 }) {
   const qc = useQueryClient();
   const [title, setTitle] = useState(note.title);
@@ -500,6 +517,15 @@ function EditorInner({
   useEffect(() => {
     if (!note.title) titleRef.current?.focus();
   }, [note.id]);
+
+  useEffect(() => {
+    if (!focusMode) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onExitFocusMode?.();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [focusMode, onExitFocusMode]);
 
   // debounce save
   useEffect(() => {
@@ -536,7 +562,7 @@ function EditorInner({
     <div className="flex h-full flex-col bg-background">
       <header
         className={cn(
-          "flex items-center gap-2 border-b border-border/60 px-4",
+          "group flex items-center gap-2 border-b border-border/60 px-4",
           mobile ? "h-12" : "h-12",
         )}
       >
@@ -565,6 +591,16 @@ function EditorInner({
         <span className="hidden text-[11px] text-muted-foreground sm:block">
           {status === "saving" ? "Salvando…" : status === "saved" ? "Salvo" : ""}
         </span>
+        {focusMode && !mobile && (
+          <button
+            onClick={onExitFocusMode}
+            className="rounded p-1.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-secondary hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring"
+            aria-label="Sair do modo foco (Esc)"
+            title="Sair do modo foco (Esc)"
+          >
+            <Minimize2 className="h-3.5 w-3.5" />
+          </button>
+        )}
         <SegmentedToggle value={mode} onChange={setMode} />
         <button
           onClick={() => downloadNoteAsTxt({ ...note, title, content })}
@@ -607,15 +643,22 @@ function EditorInner({
       </header>
       <div className="flex-1 overflow-y-auto">
         {mode === "edit" ? (
-          <textarea
-            ref={contentRef}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Comece a escrever em markdown…"
-            className="block h-full min-h-[60vh] w-full resize-none bg-transparent px-6 py-6 font-mono text-[14px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60"
-          />
+          <div
+            className={cn(
+              "mx-auto w-full transition-[max-width] duration-300",
+              focusMode ? "max-w-2xl" : "max-w-none",
+            )}
+          >
+            <textarea
+              ref={contentRef}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Comece a escrever em markdown…"
+              className="block min-h-[80vh] w-full resize-none bg-transparent px-8 py-8 font-sans text-[15px] leading-[1.85] tracking-[0.003em] text-foreground outline-none placeholder:text-muted-foreground/40"
+            />
+          </div>
         ) : (
-          <MarkdownPreview content={content} />
+          <MarkdownPreview content={content} focusMode={focusMode} />
         )}
       </div>
     </div>
@@ -649,9 +692,14 @@ function SegmentedToggle({
   );
 }
 
-function MarkdownPreview({ content }: { content: string }) {
+function MarkdownPreview({ content, focusMode = false }: { content: string; focusMode?: boolean }) {
   return (
-    <div className="markdown-preview mx-auto max-w-3xl px-6 py-6 text-[14px] leading-relaxed text-foreground">
+    <div
+      className={cn(
+        "markdown-preview mx-auto px-8 py-8 text-[15px] leading-[1.8] text-foreground transition-[max-width] duration-300",
+        focusMode ? "max-w-2xl" : "max-w-3xl",
+      )}
+    >
       {content.trim() ? (
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
       ) : (
