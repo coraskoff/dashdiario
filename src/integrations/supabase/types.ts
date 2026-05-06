@@ -82,6 +82,7 @@ export type Database = {
           id: string
           kind: string
           label: string | null
+          recurring_group_id: string | null
           updated_at: string
         }
         Insert: {
@@ -91,6 +92,7 @@ export type Database = {
           id?: string
           kind: string
           label?: string | null
+          recurring_group_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -100,9 +102,66 @@ export type Database = {
           id?: string
           kind?: string
           label?: string | null
+          recurring_group_id?: string | null
           updated_at?: string
         }
         Relationships: []
+      }
+      note_folders: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      notes: {
+        Row: {
+          content: string
+          created_at: string
+          folder_id: string | null
+          id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          folder_id?: string | null
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          folder_id?: string | null
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notes_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "note_folders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       projects: {
         Row: {

@@ -1,63 +1,93 @@
-## O que muda
+## Notas — nova seção
 
-### 1. Header de métricas (topo)
+Módulo de notas inspirado no Apple Notes: lista densa, pastas opcionais, editor markdown simples com toggle de preview, mobile como experiência principal.
 
-Substituir o atual "Saldo + Planejado/Realizado/Projeção" por **4 métricas pareadas** (prévia vs atual), no estilo "valor grande + delta sutil abaixo":
+### Backend (migration)
 
-- **Entradas** — soma das transações `income` do mês. (sem par prévia/atual — é só um número)
-- **Saídas** — soma de tudo que saiu: realizado das categorias variáveis + transações `expense` avulsas.
-- **Variáveis** — duas linhas:
-  - Prévia: total planejado do mês (ex.: R$ 2.000)
-  - Atual: projeção híbrida = realizado + (média diária restante × dias que faltam)
-- **Média diária** — duas linhas:
-  - Prévia: `planejado_total / dias_no_mês` (ex.: 2000/31 ≈ R$ 64,52)
-  - Atual: `(planejado_total − realizado_até_ontem) / dias_restantes_incluindo_hoje` — esta é a métrica que **redistribui automaticamente** quando o usuário gasta menos/mais que a prévia do dia.
+Duas tabelas no schema público, RLS public (mesmo padrão das outras tabelas do app):
 
-Layout: linha horizontal com 4 blocos separados por divisores verticais finos. Cada bloco: rótulo eyebrow pequeno, número dominante tabular-nums, e abaixo a comparação prévia↔atual em cinza com um delta colorido (verde se sobrando, vermelho se estourando).
+- **`note_folders`**: `id`, `name`, `created_at`, `updated_at`
+- **`notes`**: `id`, `folder_id` (nullable, FK→note_folders, ON DELETE SET NULL), `title`, `content` (text, markdown cru), `created_at`, `updated_at`
+- Trigger `update_updated_at_column` em ambas
+- Índice em `notes(folder_id)` e `notes(updated_at DESC)`
 
-### 2. Lógica de cálculo (`calculations.ts`)
+### Rota e arquitetura
 
-Reformular `CategoryBreakdown` e adicionar funções no nível do mês:
+- `src/routes/notes.tsx` — nova rota, link "Notas" adicionado no header (`__root.tsx`)
+- `src/modules/notes/api.ts` — CRUD de pastas e notas
+- `src/modules/notes/types.ts` — tipos `Note`, `NoteFolder`
+- Estado de seleção via URL search params (`?folder=<id|all>&note=<id>`) — permite deep link e back/forward funcionam
 
-- `plannedDaily` continua sendo a **prévia fixa** = `planned / totalDays`.
-- Adicionar `currentDaily` = média diária **dinâmica**: `max(0, (planned − realizadoAcumulado) / max(1, diasRestantesIncluindoHoje))`.
-  - Se referência é mês passado: 0. Se mês futuro: igual à prévia.
-- `projected` (= "Variáveis atual") passa a ser: `realizadoAcumulado + currentDaily × diasRestantesIncluindoHoje`. Para uma categoria sem desvios, isso bate com o `planned` original — exatamente o comportamento que o usuário descreveu (sobra de hoje se redistribui).
-- Nova função `buildMonthTotals(breakdowns, transactions, month, refDate)` retornando `{ income, expenseTotal, plannedVariables, currentVariables, plannedDaily, currentDaily }`.
+### Layout — Desktop (≥768px)
 
-### 3. Linha de cada categoria (Plan section)
+Três colunas, sem decoração desnecessária, hairlines `border-border/60`:
 
-Hoje mostra "X/dia previsto · Y/dia real". Trocar para refletir o mesmo modelo:
-- "prévia: R$ 64,52/dia · agora: R$ 61,80/dia" (com cor no "agora" se subiu/desceu).
-- Mantém a barra de progresso realizado vs planejado.
+```text
+┌──────────┬──────────────────┬──────────────────────────┐
+│ Pastas   │ Notas (lista)    │ Editor                   │
+│          │                  │                          │
+│ Todas    │ ── Título        │ [Editar] [Preview] ⋯ ⬇   │
+│ • Ideias │   snippet…       │ ────────────────────     │
+│ • Diário │   30 abr         │ # Título                 │
+│ + Nova   │ ── Título        │ Conteúdo markdown…       │
+│          │ ── ...           │                          │
+└──────────┴──────────────────┴──────────────────────────┘
+   220px         320px              flex-1
+```
 
-### 4. Exemplo numérico (validação mental)
+- **Sidebar pastas**: "Todas as notas" sempre no topo, depois pastas ordenadas por nome, contador de notas à direita em `text-muted-foreground`. Ação "Nova pasta" inline (input que aparece ao clicar em `+`). Hover/active = `bg-secondary`.
+- **Lista de notas (estilo Apple Notes)**: linhas de ~76px com título (`text-[14px] font-medium`), snippet de 1 linha (`text-[12px] text-muted-foreground` com markdown stripado), data relativa em `text-[11px]`. Divider hairline. Selecionada = `bg-secondary`. Topo da coluna: busca discreta (`Input` ghost).
+- **Editor**: header com título inline editável (input sem borda, `text-xl font-semibold`), toggle segmented `Editar | Preview` à direita, menu `⋯` (mover para pasta, duplicar, deletar) e botão download. Body: textarea full-height monoespaçada sutil (`font-mono text-[14px] leading-relaxed`) OU preview renderizado (react-markdown + remark-gfm).
+- **CTA Nova nota**: botão primário discreto no topo da coluna do meio, `+ Nova nota`.
 
-Plano: Variáveis = R$ 2000, mês 30 dias, hoje dia 10.
-- Prévia diária = 2000/30 = R$ 66,67.
-- Prévia até hoje (dia 10): 10 × 66,67 = R$ 666,67. Hoje "esperava" gastar R$ 66,67.
-- Usuário registra que gastou R$ 43 hoje. Realizado acumulado = 9×66,67 (dias 1–9 ainda sem registro, usam prévia) + 43… 
+### Layout — Mobile (<768px) — Apple Notes-like
 
-**Detalhe importante**: no modelo híbrido atual, dias passados sem registro contam como prévia. Isso vai inflar o "realizado" artificialmente. Proposta: o **realizado real** usado na média diária atual deve contar **apenas registros reais** (não a prévia dos dias passados). A "Variáveis atual" continua usando a regra híbrida (real + prévia para dias sem registro), o que mantém consistência: se você não registrou nada, projeção = plano.
+Navegação em 3 telas que deslizam (controladas por estado/URL, não router):
 
-Então:
-- `realizadoReal` = soma só de `daily_expenses` do mês (43 no exemplo).
-- `currentDaily` = (2000 − 43) / 21 dias restantes = R$ 93,19/dia → mas isso fica esquisito porque inclui dias 1–9 sem registro como "ainda disponíveis".
+1. **Pastas** (raiz `/notes`): lista de pastas full-width, linhas grandes (52px) com chevron `›`. "Todas as notas" no topo destacada. FAB inferior `+` para nova pasta.
+2. **Lista de notas** (com `?folder=`): header com back chevron + nome da pasta, busca pinned no topo, lista densa de notas. FAB grande circular (56px) inferior-direito com `+` (lápis no ícone) para nova nota — segue padrão do FAB de Finanças.
+3. **Editor** (com `?note=`): full-screen, header sticky com back, título editável centralizado, ações `⋯` e download. Toggle Editar/Preview como segmented control compacto abaixo do header. Textarea ocupa o resto da viewport com `min-height: calc(100dvh - header)`. Sem zoom em foco (`text-base` no input).
 
-**Decisão**: usar a regra **híbrida também na média diária atual**, para coerência:
-- `gastoEfetivoAteOntem` = soma híbrida dos dias < hoje (real onde existe, prévia onde não existe).
-- `currentDaily` = `(planned − gastoEfetivoAteOntem) / diasRestantesIncluindoHoje`.
-- No exemplo: dias 1–9 = 9 × 66,67 = 600 (prévia, pois sem registro). Restam 21 dias. `currentDaily` = (2000 − 600) / 21 = R$ 66,67. Igual à prévia ✓.
-- Quando o usuário registra hoje (dia 10) R$ 43 em vez dos 66,67 previstos, o cálculo de amanhã (dia 11) será: gasto efetivo até dia 10 = 600 + 43 = 643. Restam 20 dias. `currentDaily` = (2000 − 643)/20 = R$ 67,85. **Subiu** porque sobrou orçamento → ✓ exatamente o comportamento pedido.
+Transições suaves: `translate-x` com `transition-transform duration-300 ease-out` ao avançar/voltar entre telas (sensação iOS).
 
-### 5. Arquivos afetados
+### Editor markdown
 
-- `src/modules/finance/calculations.ts` — adicionar `currentDaily`, `gastoEfetivoAteOntem`, `buildMonthTotals`. Manter compat onde possível.
-- `src/routes/finance.tsx` — substituir `HeadlineNumbers` por novo `MetricsBar` com 4 blocos pareados; ajustar texto da linha de categoria.
-- Remover do header o "Saldo do mês" (não foi pedido). Saldo continua derivável (Entradas − Saídas) mas não é destaque.
+- Textarea simples (sem dependências pesadas), salva markdown cru
+- Toggle **Editar / Preview** (segmented control de 2 opções, estado local)
+- Preview: `react-markdown` + `remark-gfm` (instalar via `bun add react-markdown remark-gfm`), estilizado com `prose prose-sm dark:prose-invert max-w-none` (Tailwind typography já está? — verificar; se não, estilos manuais com tokens semânticos para h1-h3, code, blockquote, listas)
+- **Autosave**: debounce 600ms via `useEffect` → update no Supabase, indicador discreto "Salvo" → "Salvando…" no header
+- Título: input separado, salva on blur ou debounce
 
-### 6. Decisões visuais (intencionais)
+### Download
 
-- 4 métricas em linha horizontal (não cards), divididas por linhas verticais finas — ritmo de "leitura tabular", não dashboard genérico.
-- Cada par prévia↔atual em uma única linha pequena abaixo do número, com seta `↑`/`↓` colorida e o delta absoluto. Reduz carga cognitiva: o usuário lê o número grande e, se quiser entender o porquê, olha a linha de baixo.
-- Tipografia tabular-nums em todos os valores monetários.
+- **Por nota**: botão `↓` no header do editor → gera `.txt` com `# {título}\n\n{content}` → blob download. Nome: `{slug-do-titulo}-{YYYY-MM-DD}.txt`
+- **Pasta inteira**: no menu `⋯` da pasta (ou botão no header da lista mobile) → `Exportar pasta` → gera `.zip` com todas as notas via `jszip` (`bun add jszip`). Nome: `{nome-da-pasta}-{YYYY-MM-DD}.zip`. "Todas as notas" também exportável.
+
+### Diretrizes visuais aplicadas
+
+- Tipografia primeiro: hierarquia por peso/tamanho, não por cor de fundo
+- Hairlines `border-border/60` ao invés de cards com sombra dentro do módulo
+- Cor com restrição: foreground/muted-foreground/secondary; nenhum acento colorido (notas não têm semântica de cor)
+- Sem ícones genéricos coloridos: ícones lucide em `text-muted-foreground` tamanho 16px
+- Empty states autorais: "Nenhuma nota ainda" com glifo `·` e CTA inline (não ilustração genérica)
+- Microinterações: hover sutil (`bg-secondary/60`), focus-visible com `ring-1 ring-ring`
+- Mobile: respeita safe-area (`pb-[env(safe-area-inset-bottom)]`), targets ≥44px
+
+### Arquivos a criar/editar
+
+- `supabase/migrations/<ts>_notes.sql` (nova migration)
+- `src/modules/notes/api.ts` (novo)
+- `src/modules/notes/types.ts` (novo)
+- `src/modules/notes/markdown.ts` (helper: strip markdown para snippet, slugify)
+- `src/modules/notes/export.ts` (helper: gerar .txt e .zip)
+- `src/routes/notes.tsx` (novo — orquestra desktop/mobile, search params)
+- `src/components/notes/FoldersSidebar.tsx`
+- `src/components/notes/NotesList.tsx`
+- `src/components/notes/NoteEditor.tsx`
+- `src/components/notes/MobileNotesShell.tsx` (gerencia as 3 telas mobile)
+- `src/routes/__root.tsx` (adicionar `<NavLink to="/notes">Notas</NavLink>`)
+- `package.json` (adicionar `react-markdown`, `remark-gfm`, `jszip`)
+
+### Confirmação antes de implementar
+
+A migration precisa ser aprovada por você antes do código rodar. Posso prosseguir?
