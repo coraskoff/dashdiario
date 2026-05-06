@@ -119,6 +119,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
           <nav className="flex items-center gap-1 text-sm">
             <NavLink to="/tasks">Tarefas</NavLink>
             <NavLink to="/finance">Finanças</NavLink>
+            <NavLink to="/notes">Notas</NavLink>
           </nav>
         </div>
       </header>
