@@ -534,6 +534,10 @@ function EditorInner({
   const [content, setContent] = useState(note.content);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const wordCount = useMemo(
+    () => (content.trim() ? content.trim().split(/\s+/).length : 0),
+    [content],
+  );
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
@@ -619,8 +623,9 @@ function EditorInner({
             placeholder="Título"
             className="flex-1 bg-transparent text-[15px] font-bold outline-none placeholder:text-muted-foreground/60 [font-family:'iA_Writer_Duospace',ui-monospace,monospace]"
           />
-          <span className="hidden text-[11px] text-muted-foreground sm:block">
-            {status === "saving" ? "Salvando…" : status === "saved" ? "Salvo" : ""}
+          <span className="hidden text-[11px] text-muted-foreground/60 sm:block tabular-nums select-none">
+            {wordCount > 0 ? `${wordCount} palavra${wordCount !== 1 ? "s" : ""}` : ""}
+            {status === "saving" ? " · Salvando…" : status === "saved" ? " · Salvo" : ""}
           </span>
           {!mobile && (
             <button
