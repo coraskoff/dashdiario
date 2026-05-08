@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useQuery } from "@tanstack/react-query";
@@ -29,6 +28,8 @@ export function StartFocusDialog({
 
   const { data: projects = [] } = useQuery({ queryKey: ["projects"], queryFn: fetchProjects });
 
+  if (!open) return null;
+
   const start = () => {
     const preset = PRESETS[presetIdx];
     writeActive({
@@ -45,11 +46,17 @@ export function StartFocusDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold tracking-tight">Iniciar foco</DialogTitle>
-        </DialogHeader>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl border border-border/60 bg-background p-6 shadow-xl shadow-foreground/10">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold tracking-tight">Iniciar foco</h2>
+          <button
+            onClick={() => onOpenChange(false)}
+            className="rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            Fechar
+          </button>
+        </div>
 
         <div className="mt-2 space-y-5">
           <div>
@@ -116,7 +123,7 @@ export function StartFocusDialog({
             Começar →
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }
