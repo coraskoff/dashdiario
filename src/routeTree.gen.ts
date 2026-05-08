@@ -9,11 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TimerRouteImport } from './routes/timer'
 import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as NotesRouteImport } from './routes/notes'
 import { Route as FinanceRouteImport } from './routes/finance'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TimerFocusRouteImport } from './routes/timer.focus'
 
+const TimerRoute = TimerRouteImport.update({
+  id: '/timer',
+  path: '/timer',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TasksRoute = TasksRouteImport.update({
   id: '/tasks',
   path: '/tasks',
@@ -34,18 +41,27 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TimerFocusRoute = TimerFocusRouteImport.update({
+  id: '/focus',
+  path: '/focus',
+  getParentRoute: () => TimerRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/finance': typeof FinanceRoute
   '/notes': typeof NotesRoute
   '/tasks': typeof TasksRoute
+  '/timer': typeof TimerRouteWithChildren
+  '/timer/focus': typeof TimerFocusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/finance': typeof FinanceRoute
   '/notes': typeof NotesRoute
   '/tasks': typeof TasksRoute
+  '/timer': typeof TimerRouteWithChildren
+  '/timer/focus': typeof TimerFocusRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +69,22 @@ export interface FileRoutesById {
   '/finance': typeof FinanceRoute
   '/notes': typeof NotesRoute
   '/tasks': typeof TasksRoute
+  '/timer': typeof TimerRouteWithChildren
+  '/timer/focus': typeof TimerFocusRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/finance' | '/notes' | '/tasks'
+  fullPaths: '/' | '/finance' | '/notes' | '/tasks' | '/timer' | '/timer/focus'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/finance' | '/notes' | '/tasks'
-  id: '__root__' | '/' | '/finance' | '/notes' | '/tasks'
+  to: '/' | '/finance' | '/notes' | '/tasks' | '/timer' | '/timer/focus'
+  id:
+    | '__root__'
+    | '/'
+    | '/finance'
+    | '/notes'
+    | '/tasks'
+    | '/timer'
+    | '/timer/focus'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,10 +92,18 @@ export interface RootRouteChildren {
   FinanceRoute: typeof FinanceRoute
   NotesRoute: typeof NotesRoute
   TasksRoute: typeof TasksRoute
+  TimerRoute: typeof TimerRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/timer': {
+      id: '/timer'
+      path: '/timer'
+      fullPath: '/timer'
+      preLoaderRoute: typeof TimerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tasks': {
       id: '/tasks'
       path: '/tasks'
@@ -99,24 +132,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/timer/focus': {
+      id: '/timer/focus'
+      path: '/focus'
+      fullPath: '/timer/focus'
+      preLoaderRoute: typeof TimerFocusRouteImport
+      parentRoute: typeof TimerRoute
+    }
   }
 }
+
+interface TimerRouteChildren {
+  TimerFocusRoute: typeof TimerFocusRoute
+}
+
+const TimerRouteChildren: TimerRouteChildren = {
+  TimerFocusRoute: TimerFocusRoute,
+}
+
+const TimerRouteWithChildren = TimerRoute._addFileChildren(TimerRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   FinanceRoute: FinanceRoute,
   NotesRoute: NotesRoute,
   TasksRoute: TasksRoute,
+  TimerRoute: TimerRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
