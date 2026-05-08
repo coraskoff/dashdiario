@@ -1,93 +1,165 @@
-## Notas — nova seção
 
-Módulo de notas inspirado no Apple Notes: lista densa, pastas opcionais, editor markdown simples com toggle de preview, mobile como experiência principal.
+# Timer — foco gamificado com heatmap e metas
 
-### Backend (migration)
+## Visão geral
 
-Duas tabelas no schema público, RLS public (mesmo padrão das outras tabelas do app):
+Nova rota `/timer` adicionada ao header (Tarefas · Finanças · Notas · **Timer**). Duas camadas:
 
-- **`note_folders`**: `id`, `name`, `created_at`, `updated_at`
-- **`notes`**: `id`, `folder_id` (nullable, FK→note_folders, ON DELETE SET NULL), `title`, `content` (text, markdown cru), `created_at`, `updated_at`
-- Trigger `update_updated_at_column` em ambas
-- Índice em `notes(folder_id)` e `notes(updated_at DESC)`
+1. **Tela de foco (fullscreen branco)** — relógio analógico contando, count-up ou count-down, projeto opcional. Zero ruído visual durante a sessão.
+2. **Tela home do Timer** — heatmap estilo GitHub + estatísticas + metas semanais. É o que aparece quando nada está rodando.
 
-### Rota e arquitetura
-
-- `src/routes/notes.tsx` — nova rota, link "Notas" adicionado no header (`__root.tsx`)
-- `src/modules/notes/api.ts` — CRUD de pastas e notas
-- `src/modules/notes/types.ts` — tipos `Note`, `NoteFolder`
-- Estado de seleção via URL search params (`?folder=<id|all>&note=<id>`) — permite deep link e back/forward funcionam
-
-### Layout — Desktop (≥768px)
-
-Três colunas, sem decoração desnecessária, hairlines `border-border/60`:
+## Fluxo de uso
 
 ```text
-┌──────────┬──────────────────┬──────────────────────────┐
-│ Pastas   │ Notas (lista)    │ Editor                   │
-│          │                  │                          │
-│ Todas    │ ── Título        │ [Editar] [Preview] ⋯ ⬇   │
-│ • Ideias │   snippet…       │ ────────────────────     │
-│ • Diário │   30 abr         │ # Título                 │
-│ + Nova   │ ── Título        │ Conteúdo markdown…       │
-│          │ ── ...           │                          │
-└──────────┴──────────────────┴──────────────────────────┘
-   220px         320px              flex-1
+/timer (home)
+  ├─ Botão grande "Iniciar foco"
+  │     ↓ escolhe modo (livre / 25 / 50 / 90 min) + projeto opcional + tag opcional
+  │     ↓ entra em /timer/focus  (tela branca, relógio analógico)
+  │           ↓ pausa / retoma / finaliza
+  │           ↓ ao zerar (pomodoro): notificação navegador + som + título da aba pisca
+  │           ↓ volta para /timer com a sessão salva
+  ├─ Heatmap dos últimos ~3 meses (12 semanas × 7 dias)
+  ├─ Cards de stats (tempo total, projeto top, horário mais produtivo, streak)
+  └─ Bloco de meta semanal (global + por projeto, progresso e ritmo necessário)
 ```
 
-- **Sidebar pastas**: "Todas as notas" sempre no topo, depois pastas ordenadas por nome, contador de notas à direita em `text-muted-foreground`. Ação "Nova pasta" inline (input que aparece ao clicar em `+`). Hover/active = `bg-secondary`.
-- **Lista de notas (estilo Apple Notes)**: linhas de ~76px com título (`text-[14px] font-medium`), snippet de 1 linha (`text-[12px] text-muted-foreground` com markdown stripado), data relativa em `text-[11px]`. Divider hairline. Selecionada = `bg-secondary`. Topo da coluna: busca discreta (`Input` ghost).
-- **Editor**: header com título inline editável (input sem borda, `text-xl font-semibold`), toggle segmented `Editar | Preview` à direita, menu `⋯` (mover para pasta, duplicar, deletar) e botão download. Body: textarea full-height monoespaçada sutil (`font-mono text-[14px] leading-relaxed`) OU preview renderizado (react-markdown + remark-gfm).
-- **CTA Nova nota**: botão primário discreto no topo da coluna do meio, `+ Nova nota`.
+## Tela de foco (o coração da feature)
 
-### Layout — Mobile (<768px) — Apple Notes-like
+Tela 100% branca (`bg-background`), sem header, sem nav. Centro absoluto:
 
-Navegação em 3 telas que deslizam (controladas por estado/URL, não router):
+- **Relógio analógico** desenhado em SVG. Mostrador minimalista: 12 traços finos (mais grosso nas posições 12/3/6/9), sem numerais. Ponteiro de minutos e ponteiro de segundos finos em `foreground`. No count-up, ponteiros giram a partir do 12. No count-down, um arco fino preenchendo o restante (visualização do tempo que falta).
+- **Tempo digital** abaixo do relógio em fonte tabular grande (`text-7xl tracking-tight font-light tabular-nums`) — `HH:MM:SS`.
+- **Linha contextual** acima do relógio: nome do projeto · tag (cinza claro, `text-xs uppercase tracking-widest`).
+- **Controles** discretos no rodapé central: Pausar · Finalizar. Ghost buttons, aparecem on-hover/tap. Tecla `espaço` pausa, `esc` abre confirmação de finalizar.
+- **Sair sem salvar**: `esc esc` ou ícone × no canto superior direito (o único elemento de UI fixa).
+- **Wake lock**: tenta segurar `navigator.wakeLock` para não apagar a tela durante a sessão.
+- **Tab title** mostra `25:00 · Manyfesto` para acompanhar com a aba em background.
+- **Persistência**: a sessão ativa fica em `localStorage` (start, mode, project, tag, paused intervals) — recarregar a página continua de onde parou.
 
-1. **Pastas** (raiz `/notes`): lista de pastas full-width, linhas grandes (52px) com chevron `›`. "Todas as notas" no topo destacada. FAB inferior `+` para nova pasta.
-2. **Lista de notas** (com `?folder=`): header com back chevron + nome da pasta, busca pinned no topo, lista densa de notas. FAB grande circular (56px) inferior-direito com `+` (lápis no ícone) para nova nota — segue padrão do FAB de Finanças.
-3. **Editor** (com `?note=`): full-screen, header sticky com back, título editável centralizado, ações `⋯` e download. Toggle Editar/Preview como segmented control compacto abaixo do header. Textarea ocupa o resto da viewport com `min-height: calc(100dvh - header)`. Sem zoom em foco (`text-base` no input).
+Justificativa de design: tela branca pura + relógio analógico cria um "ritual de foco". Diferente de qualquer dashboard de produtividade — é um objeto único, intencional. Sem decoração, sem barrinha de progresso colorida, sem motivacional. O relógio é a obra.
 
-Transições suaves: `translate-x` com `transition-transform duration-300 ease-out` ao avançar/voltar entre telas (sensação iOS).
+## Tela home (`/timer`)
 
-### Editor markdown
+Layout em 3 blocos verticais, alinhados ao container existente:
 
-- Textarea simples (sem dependências pesadas), salva markdown cru
-- Toggle **Editar / Preview** (segmented control de 2 opções, estado local)
-- Preview: `react-markdown` + `remark-gfm` (instalar via `bun add react-markdown remark-gfm`), estilizado com `prose prose-sm dark:prose-invert max-w-none` (Tailwind typography já está? — verificar; se não, estilos manuais com tokens semânticos para h1-h3, code, blockquote, listas)
-- **Autosave**: debounce 600ms via `useEffect` → update no Supabase, indicador discreto "Salvo" → "Salvando…" no header
-- Título: input separado, salva on blur ou debounce
+### 1. Header da seção + CTA
+```text
+SEU FOCO
+Esta semana.                                      [Iniciar foco →]
+```
+Mesma tipografia do `/finance` ("SEMANA DE..." + título grande). CTA primário sólido à direita.
 
-### Download
+### 2. Heatmap estilo GitHub
+- Grid de 12–14 semanas × 7 dias (linhas = dias da semana, colunas = semanas; última coluna = semana atual).
+- 4 níveis (sem incluir o vazio):
+  - `0` cinza muito claro (`bg-muted/40`)
+  - `<1h` `oklch(0.85 0.04 150)`
+  - `1–2h` `oklch(0.72 0.10 150)`
+  - `2–3h` `oklch(0.60 0.14 150)`
+  - `3h+` `oklch(0.48 0.18 150)` (escala única, verde-sálvia, sem arco-íris)
+- Hover/tap mostra tooltip "qua, 7 mai · 1h 23min · 2 sessões".
+- Labels mensais sutis em cima (`mai · jun · jul`), labels de dia ("seg, qua, sex") à esquerda em micro caps.
 
-- **Por nota**: botão `↓` no header do editor → gera `.txt` com `# {título}\n\n{content}` → blob download. Nome: `{slug-do-titulo}-{YYYY-MM-DD}.txt`
-- **Pasta inteira**: no menu `⋯` da pasta (ou botão no header da lista mobile) → `Exportar pasta` → gera `.zip` com todas as notas via `jszip` (`bun add jszip`). Nome: `{nome-da-pasta}-{YYYY-MM-DD}.zip`. "Todas as notas" também exportável.
+### 3. Stats cards (4 colunas no desktop, 2 no mobile)
+- **Tempo total (semana)** — `12h 40min` + delta vs semana anterior em texto pequeno
+- **Projeto top** — nome + barra horizontal mini com share %
+- **Horário mais produtivo** — faixa "14h–17h" derivada do histograma de sessões dos últimos 30 dias
+- **Streak** — "9 dias consecutivos" com pulso sutil
 
-### Diretrizes visuais aplicadas
+### 4. Meta semanal (bloco destacado, hairline `border-border/60`)
+```text
+META · 25H ESTA SEMANA                                    Editar metas
+─────────────────────────────────────────────
+12h 40min  ·········  25h
+[barra de progresso fina, ~50%]
+Faltam 12h 20min em 3 dias  ·  ~4h 07min/dia para bater
+```
+Abaixo, **metas por projeto** em lista densa (apenas projetos com meta definida):
+```text
+Manyfesto    8h / 12h    ▓▓▓▓▓▓░░░░  faltam 4h
+Arko         3h / 5h     ▓▓▓▓▓▓░░░░  faltam 2h
+Severino     1h 40min    sem meta · definir →
+```
 
-- Tipografia primeiro: hierarquia por peso/tamanho, não por cor de fundo
-- Hairlines `border-border/60` ao invés de cards com sombra dentro do módulo
-- Cor com restrição: foreground/muted-foreground/secondary; nenhum acento colorido (notas não têm semântica de cor)
-- Sem ícones genéricos coloridos: ícones lucide em `text-muted-foreground` tamanho 16px
-- Empty states autorais: "Nenhuma nota ainda" com glifo `·` e CTA inline (não ilustração genérica)
-- Microinterações: hover sutil (`bg-secondary/60`), focus-visible com `ring-1 ring-ring`
-- Mobile: respeita safe-area (`pb-[env(safe-area-inset-bottom)]`), targets ≥44px
+### 5. Sessões recentes (lista densa, opcional/colapsável)
+Estilo Apple Notes: linha por sessão, tempo · projeto · horário · duração. Permite deletar/editar duração caso esqueça de finalizar.
 
-### Arquivos a criar/editar
+## Mobile
 
-- `supabase/migrations/<ts>_notes.sql` (nova migration)
-- `src/modules/notes/api.ts` (novo)
-- `src/modules/notes/types.ts` (novo)
-- `src/modules/notes/markdown.ts` (helper: strip markdown para snippet, slugify)
-- `src/modules/notes/export.ts` (helper: gerar .txt e .zip)
-- `src/routes/notes.tsx` (novo — orquestra desktop/mobile, search params)
-- `src/components/notes/FoldersSidebar.tsx`
-- `src/components/notes/NotesList.tsx`
-- `src/components/notes/NoteEditor.tsx`
-- `src/components/notes/MobileNotesShell.tsx` (gerencia as 3 telas mobile)
-- `src/routes/__root.tsx` (adicionar `<NavLink to="/notes">Notas</NavLink>`)
-- `package.json` (adicionar `react-markdown`, `remark-gfm`, `jszip`)
+- Home: header + heatmap (scroll horizontal se não couber) + cards empilhados + meta + FAB grande "Iniciar foco" fixo no rodapé central (consistente com Finanças).
+- Tela de foco: idêntica ao desktop — branca, relógio centralizado, controles no rodapé acima da safe-area.
+- Notificações: pede permissão na primeira tentativa de pomodoro.
 
-### Confirmação antes de implementar
+## Modelo de dados (Supabase)
 
-A migration precisa ser aprovada por você antes do código rodar. Posso prosseguir?
+Três tabelas novas, RLS público (consistente com o resto do projeto):
+
+**`timer_sessions`**
+- `project_id` uuid nullable (FK lógica para `projects`)
+- `tag` text nullable
+- `mode` text — `'count_up' | 'count_down'`
+- `planned_seconds` int nullable (só para count-down)
+- `started_at` timestamptz
+- `ended_at` timestamptz nullable (null = sessão em andamento, recuperável)
+- `duration_seconds` int — tempo efetivo (descontando pausas)
+- `completed` bool — chegou ao fim do pomodoro?
+- Índices em `started_at desc` e `project_id`
+
+**`timer_goals`** — meta global semanal
+- `weekly_seconds` int
+- linha única (upsert), sem `user_id` no padrão atual do projeto
+
+**`timer_project_goals`**
+- `project_id` uuid
+- `weekly_seconds` int
+- unique (`project_id`)
+
+Trigger `update_updated_at_column` em todas. Sem CHECK constraints temporais.
+
+## Notificações
+
+- `Notification.requestPermission()` na primeira sessão de pomodoro.
+- Ao zerar: `new Notification("Foco concluído · 25min em Manyfesto")` + Web Audio API tocando um sino curto (gerado, sem asset externo) + título da aba pisca entre `✓ Concluído` e o original por 8s.
+- Toast in-app via sonner quando a aba está em foreground.
+
+## Arquitetura
+
+```text
+src/modules/timer/
+  ├─ types.ts              TimerSession, TimerGoal, ProjectGoal, Mode
+  ├─ api.ts                CRUD (fetchSessions, startSession, finishSession, getGoals, setGoals)
+  ├─ stats.ts              agregações: heatmapBuckets, weeklyTotal, topProject, peakHours, streak
+  ├─ notify.ts             permission, fire notification, beep via WebAudio, tab-title flasher
+  ├─ wake-lock.ts          acquire/release com fallback silencioso
+  └─ active-session.ts     localStorage persistence da sessão em curso
+
+src/components/timer/
+  ├─ AnalogClock.tsx       SVG, count-up & count-down (arco), tamanho responsivo
+  ├─ Heatmap.tsx           grid + tooltip
+  ├─ StatCard.tsx
+  ├─ WeeklyGoalBar.tsx
+  ├─ ProjectGoalRow.tsx
+  ├─ StartFocusDialog.tsx  escolhe modo + projeto + tag, abre /timer/focus
+  └─ FocusOverlay.tsx      tela branca fullscreen (usada em /timer/focus)
+
+src/routes/
+  ├─ timer.tsx             home
+  └─ timer.focus.tsx       tela de foco fullscreen
+```
+
+`__root.tsx`: adicionar item "Timer" na nav (entre Finanças e Notas, ou depois de Notas — manter ordem do produto).
+
+## Consistência visual
+
+- Hairlines `border-border/60`, sem cards coloridos.
+- Tipografia: títulos no mesmo padrão de `/finance` e `/tasks`.
+- Verde do heatmap em uma única matiz (sálvia), respeitando a regra do projeto de cor com restrição.
+- Nada de gradiente, glow, ou "celebração colorida". Gamificação vem da clareza dos números (faltam X · ritmo Y · streak Z), não de confete.
+
+## O que está fora do escopo
+
+- Integração com tarefas (iniciar timer a partir de uma task) — pode vir depois.
+- Compartilhamento social do heatmap.
+- Histórico exportável (.csv).
+- Multi-device sync em tempo real durante a sessão (localStorage cobre o caso comum de F5).
+
