@@ -4,6 +4,7 @@ import {
   createRootRouteWithContext,
   HeadContent,
   Scripts,
+  useLocation,
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
@@ -130,6 +131,16 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   const setFab = useCallback((action: (() => void) | null) => {
     setFabActionState(action ? () => action : null);
   }, []);
+  const location = useLocation();
+  const isFocus = location.pathname.startsWith("/timer/focus");
+
+  if (isFocus) {
+    return (
+      <MobileFabContext.Provider value={{ setFab }}>
+        {children}
+      </MobileFabContext.Provider>
+    );
+  }
 
   return (
     <MobileFabContext.Provider value={{ setFab }}>
