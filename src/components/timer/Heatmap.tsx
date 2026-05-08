@@ -1,5 +1,11 @@
 import { useMemo } from "react";
-import { dailyTotals, dailyCounts, formatDuration, heatmapLevel, isoDate } from "@/modules/timer/stats";
+import {
+  dailyTotals,
+  dailyCounts,
+  formatDuration,
+  heatmapLevel,
+  isoDate,
+} from "@/modules/timer/stats";
 import type { TimerSession } from "@/modules/timer/types";
 
 const LEVEL_BG = [
@@ -60,20 +66,27 @@ export function Heatmap({ sessions }: { sessions: TimerSession[] }) {
 
   return (
     <div>
-      <div className="flex gap-1.5">
+      <div className="flex w-max max-w-full gap-1.5 overflow-x-auto pb-1">
         {/* row labels */}
         <div className="flex flex-col gap-1.5 pr-1 text-[10px] uppercase tracking-widest text-muted-foreground">
           {DOW_LABELS.map((d, i) => (
-            <div key={i} className="flex h-3.5 items-center">{d}</div>
+            <div key={i} className="flex h-3.5 items-center">
+              {d}
+            </div>
           ))}
         </div>
         {/* week columns */}
-        <div className="flex flex-1 gap-1.5">
+        <div className="flex shrink-0 gap-1.5">
           {columns.map((col, wi) => (
-            <div key={wi} className="flex flex-1 flex-col gap-1.5">
+            <div key={wi} className="flex shrink-0 flex-col gap-1.5">
               {col.map((cell, di) => {
                 if (cell.isFuture) {
-                  return <div key={di} className="aspect-square rounded-[3px] border border-dashed border-border/30" />;
+                  return (
+                    <div
+                      key={di}
+                      className="h-3.5 w-3.5 rounded-[3px] border border-dashed border-border/30"
+                    />
+                  );
                 }
                 const lvl = heatmapLevel(cell.sec);
                 const tooltip = `${cell.date.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" })} · ${formatDuration(cell.sec)}${cell.count ? ` · ${cell.count} ${cell.count === 1 ? "sessão" : "sessões"}` : ""}`;
@@ -81,7 +94,7 @@ export function Heatmap({ sessions }: { sessions: TimerSession[] }) {
                   <div
                     key={di}
                     title={tooltip}
-                    className={`aspect-square rounded-[3px] ${LEVEL_BG[lvl]} ${cell.isToday ? "ring-1 ring-foreground ring-offset-1 ring-offset-background" : ""} transition-transform hover:scale-110`}
+                    className={`h-3.5 w-3.5 rounded-[3px] ${LEVEL_BG[lvl]} ${cell.isToday ? "ring-1 ring-foreground ring-offset-1 ring-offset-background" : ""} transition-transform hover:scale-110`}
                   />
                 );
               })}
@@ -93,9 +106,13 @@ export function Heatmap({ sessions }: { sessions: TimerSession[] }) {
       {/* footer */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3 text-[11px] uppercase tracking-widest text-muted-foreground">
         <div className="flex items-center gap-3">
-          <span>{formatDuration(rangeTotal)} nas últimas {WEEKS} semanas</span>
+          <span>
+            {formatDuration(rangeTotal)} nas últimas {WEEKS} semanas
+          </span>
           <span className="text-muted-foreground/50">·</span>
-          <span>{daysWithFocus} {daysWithFocus === 1 ? "dia" : "dias"}</span>
+          <span>
+            {daysWithFocus} {daysWithFocus === 1 ? "dia" : "dias"}
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
           <span>menos</span>
