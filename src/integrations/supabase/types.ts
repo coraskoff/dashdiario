@@ -234,6 +234,93 @@ export type Database = {
           },
         ]
       }
+      timer_goals: {
+        Row: {
+          created_at: string
+          id: string
+          updated_at: string
+          weekly_seconds: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          updated_at?: string
+          weekly_seconds?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          updated_at?: string
+          weekly_seconds?: number
+        }
+        Relationships: []
+      }
+      timer_project_goals: {
+        Row: {
+          created_at: string
+          id: string
+          project_id: string
+          updated_at: string
+          weekly_seconds: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          project_id: string
+          updated_at?: string
+          weekly_seconds?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          project_id?: string
+          updated_at?: string
+          weekly_seconds?: number
+        }
+        Relationships: []
+      }
+      timer_sessions: {
+        Row: {
+          completed: boolean
+          created_at: string
+          duration_seconds: number
+          ended_at: string | null
+          id: string
+          mode: string
+          planned_seconds: number | null
+          project_id: string | null
+          started_at: string
+          tag: string | null
+          updated_at: string
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          duration_seconds?: number
+          ended_at?: string | null
+          id?: string
+          mode?: string
+          planned_seconds?: number | null
+          project_id?: string | null
+          started_at: string
+          tag?: string | null
+          updated_at?: string
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          duration_seconds?: number
+          ended_at?: string | null
+          id?: string
+          mode?: string
+          planned_seconds?: number | null
+          project_id?: string | null
+          started_at?: string
+          tag?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
