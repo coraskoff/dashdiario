@@ -195,11 +195,18 @@ function FocusPage() {
 
       <div
         onClick={togglePause}
-        className="cursor-pointer select-none tabular-nums leading-none"
+        className="cursor-pointer select-none tabular-nums leading-none px-6 text-center"
         style={{
           fontFamily: '"Crimson Pro", serif',
           fontWeight: 300,
-          fontSize: "clamp(8rem, 26vw, 22rem)",
+          fontSize:
+            remaining !== null
+              ? (active.plannedSeconds && active.plannedSeconds >= 3600
+                  ? "clamp(4rem, 17vw, 18rem)"
+                  : "clamp(6rem, 24vw, 22rem)")
+              : (elapsed >= 3600
+                  ? "clamp(4rem, 17vw, 18rem)"
+                  : "clamp(6rem, 24vw, 22rem)"),
           letterSpacing: "-0.04em",
           color: fg,
           opacity: active.pausedAt ? 0.45 : 1,
