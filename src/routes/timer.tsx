@@ -200,34 +200,36 @@ function TimerHome() {
               const pgPct = target > 0 ? Math.min(100, Math.round((sec / target) * 100)) : 0;
               const remain = Math.max(0, target - sec);
               return (
-                <div key={p.id} className="flex items-center gap-3 text-sm">
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: projectColor(p) }}
-                  />
-                  <span className="w-32 shrink-0 truncate text-foreground">{p.name}</span>
-                  <span className="w-24 shrink-0 tabular-nums text-muted-foreground">
-                    {formatDuration(sec)}
-                  </span>
+                <div key={p.id} className="text-sm">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: projectColor(p) }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-foreground">{p.name}</span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground text-xs">
+                      {formatDuration(sec)}
+                      {target > 0 && (
+                        <span className="text-muted-foreground/70"> / {formatHM(target)}</span>
+                      )}
+                    </span>
+                  </div>
                   {target > 0 ? (
-                    <>
-                      <span className="w-16 shrink-0 tabular-nums text-muted-foreground">
-                        / {formatHM(target)}
-                      </span>
+                    <div className="mt-1.5 flex items-center gap-2">
                       <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted/50">
                         <div
                           className="h-full rounded-full bg-foreground/80"
                           style={{ width: `${pgPct}%` }}
                         />
                       </div>
-                      <span className="w-24 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+                      <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
                         {remain > 0 ? `faltam ${formatDuration(remain)}` : "meta ✓"}
                       </span>
-                    </>
+                    </div>
                   ) : (
                     <button
                       onClick={() => setGoalsOpen(true)}
-                      className="ml-auto text-xs text-muted-foreground/70 transition-colors hover:text-foreground"
+                      className="mt-1 text-xs text-muted-foreground/70 transition-colors hover:text-foreground"
                     >
                       definir meta →
                     </button>
