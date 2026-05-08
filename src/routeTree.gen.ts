@@ -9,12 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TimerRouteImport } from './routes/timer'
 import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as NotesRouteImport } from './routes/notes'
 import { Route as FinanceRouteImport } from './routes/finance'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TimerFocusRouteImport } from './routes/timer.focus'
 
+const TimerRoute = TimerRouteImport.update({
+  id: '/timer',
+  path: '/timer',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TasksRoute = TasksRouteImport.update({
   id: '/tasks',
   path: '/tasks',
@@ -36,9 +42,9 @@ const IndexRoute = IndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const TimerFocusRoute = TimerFocusRouteImport.update({
-  id: '/timer/focus',
-  path: '/timer/focus',
-  getParentRoute: () => rootRouteImport,
+  id: '/focus',
+  path: '/focus',
+  getParentRoute: () => TimerRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -46,6 +52,7 @@ export interface FileRoutesByFullPath {
   '/finance': typeof FinanceRoute
   '/notes': typeof NotesRoute
   '/tasks': typeof TasksRoute
+  '/timer': typeof TimerRouteWithChildren
   '/timer/focus': typeof TimerFocusRoute
 }
 export interface FileRoutesByTo {
@@ -53,6 +60,7 @@ export interface FileRoutesByTo {
   '/finance': typeof FinanceRoute
   '/notes': typeof NotesRoute
   '/tasks': typeof TasksRoute
+  '/timer': typeof TimerRouteWithChildren
   '/timer/focus': typeof TimerFocusRoute
 }
 export interface FileRoutesById {
@@ -61,14 +69,22 @@ export interface FileRoutesById {
   '/finance': typeof FinanceRoute
   '/notes': typeof NotesRoute
   '/tasks': typeof TasksRoute
+  '/timer': typeof TimerRouteWithChildren
   '/timer/focus': typeof TimerFocusRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/finance' | '/notes' | '/tasks' | '/timer/focus'
+  fullPaths: '/' | '/finance' | '/notes' | '/tasks' | '/timer' | '/timer/focus'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/finance' | '/notes' | '/tasks' | '/timer/focus'
-  id: '__root__' | '/' | '/finance' | '/notes' | '/tasks' | '/timer/focus'
+  to: '/' | '/finance' | '/notes' | '/tasks' | '/timer' | '/timer/focus'
+  id:
+    | '__root__'
+    | '/'
+    | '/finance'
+    | '/notes'
+    | '/tasks'
+    | '/timer'
+    | '/timer/focus'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -76,11 +92,18 @@ export interface RootRouteChildren {
   FinanceRoute: typeof FinanceRoute
   NotesRoute: typeof NotesRoute
   TasksRoute: typeof TasksRoute
-  TimerFocusRoute: typeof TimerFocusRoute
+  TimerRoute: typeof TimerRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/timer': {
+      id: '/timer'
+      path: '/timer'
+      fullPath: '/timer'
+      preLoaderRoute: typeof TimerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tasks': {
       id: '/tasks'
       path: '/tasks'
@@ -111,20 +134,30 @@ declare module '@tanstack/react-router' {
     }
     '/timer/focus': {
       id: '/timer/focus'
-      path: '/timer/focus'
+      path: '/focus'
       fullPath: '/timer/focus'
       preLoaderRoute: typeof TimerFocusRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof TimerRoute
     }
   }
 }
+
+interface TimerRouteChildren {
+  TimerFocusRoute: typeof TimerFocusRoute
+}
+
+const TimerRouteChildren: TimerRouteChildren = {
+  TimerFocusRoute: TimerFocusRoute,
+}
+
+const TimerRouteWithChildren = TimerRoute._addFileChildren(TimerRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   FinanceRoute: FinanceRoute,
   NotesRoute: NotesRoute,
   TasksRoute: TasksRoute,
-  TimerFocusRoute: TimerFocusRoute,
+  TimerRoute: TimerRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
