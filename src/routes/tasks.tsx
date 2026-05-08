@@ -1315,6 +1315,12 @@ function TaskActionsMenu({
           />
         </PopoverContent>
       </Popover>
+      <StartFocusDialog
+        open={focusOpen}
+        onOpenChange={setFocusOpen}
+        initialProjectId={task.project_id ?? null}
+        initialTag={task.title}
+      />
     </>
   );
 }
