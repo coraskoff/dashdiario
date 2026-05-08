@@ -155,7 +155,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
               <NavLink to="/tasks">Tarefas</NavLink>
               <NavLink to="/finance">Finanças</NavLink>
               <NavLink to="/notes">Notas</NavLink>
-              <NavLink to="/timer">Timer</NavLink>
+              <NavLink to="/timer">Foco</NavLink>
             </nav>
           </div>
         </header>
@@ -190,7 +190,7 @@ const NAV_ITEMS = [
   { to: "/tasks", label: "Tarefas", icon: CheckSquare },
   { to: "/finance", label: "Finanças", icon: Wallet },
   { to: "/notes", label: "Notas", icon: BookOpen },
-  { to: "/timer", label: "Timer", icon: Timer },
+  { to: "/timer", label: "Foco", icon: Timer },
 ] as const;
 
 function MobileNav() {

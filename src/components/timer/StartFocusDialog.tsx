@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,16 +17,28 @@ const PRESETS: { label: string; seconds: number | null; mode: TimerMode }[] = [
 export function StartFocusDialog({
   open,
   onOpenChange,
+  initialProjectId,
+  initialTag,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  initialProjectId?: string | null;
+  initialTag?: string;
 }) {
   const navigate = useNavigate();
   const [presetIdx, setPresetIdx] = useState(1);
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [tag, setTag] = useState("");
+  const [projectId, setProjectId] = useState<string | null>(initialProjectId ?? null);
+  const [tag, setTag] = useState(initialTag ?? "");
 
   const { data: projects = [] } = useQuery({ queryKey: ["projects"], queryFn: fetchProjects });
+
+  // Sync when opened with new defaults
+  useEffect(() => {
+    if (open) {
+      setProjectId(initialProjectId ?? null);
+      setTag(initialTag ?? "");
+    }
+  }, [open, initialProjectId, initialTag]);
 
   if (!open) return null;
 
@@ -109,7 +121,7 @@ export function StartFocusDialog({
 
           <div>
             <p className="mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
-              Etiqueta · opcional
+              Descrição · opcional
             </p>
             <Input
               value={tag}

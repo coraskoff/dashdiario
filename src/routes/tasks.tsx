@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useRef, useState } from "react";
 import { useMobileFab } from "@/routes/__root";
 import { toast } from "sonner";
-import { ArrowRight, Calendar as CalendarIcon, Check, CheckCheck, FolderInput, GripVertical, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { ArrowRight, Calendar as CalendarIcon, Check, CheckCheck, FolderInput, GripVertical, Pencil, Plus, RotateCcw, Timer as TimerIcon, Trash2, X } from "lucide-react";
+import { StartFocusDialog } from "@/components/timer/StartFocusDialog";
 import { Pulse } from "@/components/Pulse";
 import {
   createTask,
@@ -1203,6 +1204,7 @@ function TaskActionsMenu({
   projects,
 }: ColumnHandlers & { task: Task }) {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [focusOpen, setFocusOpen] = useState(false);
   return (
     <>
       <DropdownMenu>
@@ -1219,6 +1221,10 @@ function TaskActionsMenu({
           <DropdownMenuItem onSelect={() => onEdit(task)}>
             <Pencil className="mr-2 h-3.5 w-3.5" />
             Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setFocusOpen(true)}>
+            <TimerIcon className="mr-2 h-3.5 w-3.5" />
+            Foco
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setDatePickerOpen(true)}>
             <CalendarIcon className="mr-2 h-3.5 w-3.5" />
@@ -1309,6 +1315,12 @@ function TaskActionsMenu({
           />
         </PopoverContent>
       </Popover>
+      <StartFocusDialog
+        open={focusOpen}
+        onOpenChange={setFocusOpen}
+        initialProjectId={task.project_id ?? null}
+        initialTag={task.title}
+      />
     </>
   );
 }
