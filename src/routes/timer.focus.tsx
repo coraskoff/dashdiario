@@ -1,9 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { X, Pause, Play, Square, Sun, Moon } from "lucide-react";
+import { X, Pause, Play, Square } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { AnalogClock } from "@/components/timer/AnalogClock";
 import {
   elapsedSeconds,
   readActive,
@@ -21,7 +22,7 @@ import {
 import { acquireWakeLock, releaseWakeLock } from "@/modules/timer/wake-lock";
 import type { ActiveSession } from "@/modules/timer/types";
 
-export const Route = createFileRoute("/timer_/focus")({
+export const Route = createFileRoute("/timer/focus")({
   component: FocusPage,
 });
 
@@ -42,7 +43,6 @@ function FocusPage() {
   const qc = useQueryClient();
   const [active, setActive] = useState<ActiveSession | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [dark, setDark] = useState(false);
   const completedRef = useRef(false);
   const originalTitleRef = useRef<string>("");
 
@@ -166,65 +166,59 @@ function FocusPage() {
   const display = remaining !== null ? formatClock(remaining) : formatClock(elapsed);
 
   return (
-    <div
-      className={`fixed inset-0 z-[100] ${dark ? "bg-neutral-950 text-neutral-50" : "bg-white text-neutral-900"}`}
-    >
-      {/* top-right controls */}
-      <div className="absolute right-4 top-4 flex items-center gap-1">
-        <button
-          onClick={() => setDark((d) => !d)}
-          aria-label={dark ? "Modo claro" : "Modo escuro"}
-          className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${dark ? "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-50" : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900"}`}
-        >
-          {dark ? <Sun size={18} strokeWidth={1.75} /> : <Moon size={18} strokeWidth={1.75} />}
-        </button>
-        <button
-          onClick={() => finish({ completed: false })}
-          aria-label="Encerrar"
-          className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${dark ? "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-50" : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900"}`}
-        >
-          <X size={18} strokeWidth={1.75} />
-        </button>
-      </div>
+    <div className="fixed inset-0 z-[100] bg-background text-foreground">
+      {/* close */}
+      <button
+        onClick={() => finish({ completed: false })}
+        aria-label="Encerrar"
+        className="absolute right-4 top-4 rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+      >
+        <X size={18} strokeWidth={1.75} />
+      </button>
 
       <div className="flex h-full flex-col items-center justify-center px-6">
         {(projectName || active.tag) && (
-          <p className={`mb-10 text-[11px] uppercase tracking-[0.2em] ${dark ? "text-neutral-500" : "text-neutral-400"}`}>
+          <p className="mb-8 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
             {projectName}
             {projectName && active.tag ? " · " : ""}
             {active.tag}
           </p>
         )}
 
-        <div
-          className="text-center font-mono font-bold tabular-nums leading-none tracking-tight"
-          style={{ fontSize: "clamp(5rem, 18vw, 16rem)" }}
-        >
+        <AnalogClock
+          elapsedSeconds={elapsed}
+          plannedSeconds={active.plannedSeconds}
+          size={Math.min(420, typeof window !== "undefined" ? Math.min(window.innerWidth - 80, window.innerHeight - 320) : 360)}
+        />
+
+        <div className="mt-10 font-light tabular-nums tracking-tight text-foreground" style={{ fontSize: "clamp(2.5rem, 7vw, 4.5rem)" }}>
           {display}
         </div>
 
         {active.pausedAt && (
-          <p className={`mt-6 text-[11px] uppercase tracking-[0.2em] ${dark ? "text-neutral-500" : "text-neutral-400"}`}>
-            Pausado
-          </p>
+          <p className="mt-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Pausado</p>
         )}
 
-        <div className="mt-16 flex items-center gap-3">
+        <div className="mt-12 flex items-center gap-2">
           <button
             onClick={togglePause}
-            aria-label={active.pausedAt ? "Retomar" : "Pausar"}
-            className={`flex h-14 w-14 items-center justify-center rounded-full border transition-colors ${dark ? "border-neutral-800 text-neutral-200 hover:bg-neutral-900" : "border-neutral-200 text-neutral-800 hover:bg-neutral-50"}`}
+            className="inline-flex items-center gap-2 rounded-full border border-border/60 px-5 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
           >
-            {active.pausedAt ? <Play size={20} strokeWidth={1.75} /> : <Pause size={20} strokeWidth={1.75} />}
+            {active.pausedAt ? <Play size={14} /> : <Pause size={14} />}
+            {active.pausedAt ? "Retomar" : "Pausar"}
           </button>
           <button
             onClick={() => finish({ completed: false })}
-            aria-label="Finalizar"
-            className={`flex h-14 w-14 items-center justify-center rounded-full transition-opacity hover:opacity-90 ${dark ? "bg-neutral-50 text-neutral-950" : "bg-neutral-900 text-white"}`}
+            className="inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-sm text-background transition-opacity hover:opacity-90"
           >
-            <Square size={16} strokeWidth={2} fill="currentColor" />
+            <Square size={12} />
+            Finalizar
           </button>
         </div>
+
+        <p className="mt-8 text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60">
+          espaço · pausar    esc · encerrar
+        </p>
       </div>
     </div>
   );
