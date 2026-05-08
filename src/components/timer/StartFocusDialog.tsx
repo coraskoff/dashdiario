@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,14 +33,12 @@ export function StartFocusDialog({
   const { data: projects = [] } = useQuery({ queryKey: ["projects"], queryFn: fetchProjects });
 
   // Sync when opened with new defaults
-  const lastOpen = useRef(false);
-  if (open && !lastOpen.current) {
-    lastOpen.current = true;
-    setProjectId(initialProjectId ?? null);
-    setTag(initialTag ?? "");
-  } else if (!open && lastOpen.current) {
-    lastOpen.current = false;
-  }
+  useEffect(() => {
+    if (open) {
+      setProjectId(initialProjectId ?? null);
+      setTag(initialTag ?? "");
+    }
+  }, [open, initialProjectId, initialTag]);
 
   if (!open) return null;
 
