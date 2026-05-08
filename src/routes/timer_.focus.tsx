@@ -22,7 +22,7 @@ import {
 import { acquireWakeLock, releaseWakeLock } from "@/modules/timer/wake-lock";
 import type { ActiveSession } from "@/modules/timer/types";
 
-export const Route = createFileRoute("/timer/focus")({
+export const Route = createFileRoute("/timer_/focus")({
   component: FocusPage,
 });
 
