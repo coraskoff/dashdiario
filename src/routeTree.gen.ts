@@ -13,6 +13,7 @@ import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as NotesRouteImport } from './routes/notes'
 import { Route as FinanceRouteImport } from './routes/finance'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TimerFocusRouteImport } from './routes/timer.focus'
 
 const TasksRoute = TasksRouteImport.update({
   id: '/tasks',
@@ -34,18 +35,25 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TimerFocusRoute = TimerFocusRouteImport.update({
+  id: '/timer/focus',
+  path: '/timer/focus',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/finance': typeof FinanceRoute
   '/notes': typeof NotesRoute
   '/tasks': typeof TasksRoute
+  '/timer/focus': typeof TimerFocusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/finance': typeof FinanceRoute
   '/notes': typeof NotesRoute
   '/tasks': typeof TasksRoute
+  '/timer/focus': typeof TimerFocusRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,14 @@ export interface FileRoutesById {
   '/finance': typeof FinanceRoute
   '/notes': typeof NotesRoute
   '/tasks': typeof TasksRoute
+  '/timer/focus': typeof TimerFocusRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/finance' | '/notes' | '/tasks'
+  fullPaths: '/' | '/finance' | '/notes' | '/tasks' | '/timer/focus'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/finance' | '/notes' | '/tasks'
-  id: '__root__' | '/' | '/finance' | '/notes' | '/tasks'
+  to: '/' | '/finance' | '/notes' | '/tasks' | '/timer/focus'
+  id: '__root__' | '/' | '/finance' | '/notes' | '/tasks' | '/timer/focus'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +76,7 @@ export interface RootRouteChildren {
   FinanceRoute: typeof FinanceRoute
   NotesRoute: typeof NotesRoute
   TasksRoute: typeof TasksRoute
+  TimerFocusRoute: typeof TimerFocusRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +109,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/timer/focus': {
+      id: '/timer/focus'
+      path: '/timer/focus'
+      fullPath: '/timer/focus'
+      preLoaderRoute: typeof TimerFocusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,7 +124,17 @@ const rootRouteChildren: RootRouteChildren = {
   FinanceRoute: FinanceRoute,
   NotesRoute: NotesRoute,
   TasksRoute: TasksRoute,
+  TimerFocusRoute: TimerFocusRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
