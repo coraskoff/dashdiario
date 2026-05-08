@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Flame, Clock, Target, TrendingUp, Pencil, Trash2 } from "lucide-react";
@@ -90,6 +90,8 @@ function TimerHome() {
 
   return (
     <>
+      <Outlet />
+
       {/* Header */}
       <header className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
