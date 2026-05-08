@@ -1,10 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { X, Pause, Play, Square } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { AnalogClock } from "@/components/timer/AnalogClock";
 import {
   elapsedSeconds,
   readActive,
@@ -43,6 +42,10 @@ function FocusPage() {
   const qc = useQueryClient();
   const [active, setActive] = useState<ActiveSession | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [night, setNight] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("focus-night") === "1";
+  });
   const completedRef = useRef(false);
   const originalTitleRef = useRef<string>("");
 
@@ -165,61 +168,54 @@ function FocusPage() {
 
   const display = remaining !== null ? formatClock(remaining) : formatClock(elapsed);
 
+  const bg = night ? "#11140f" : "#ffffff";
+  const fg = night ? "#9ca38f" : "#6b6b6b";
+  const subtle = night ? "#5a6150" : "#a8a8a8";
+
+  const toggleNight = () => {
+    const next = !night;
+    setNight(next);
+    if (typeof window !== "undefined")
+      window.localStorage.setItem("focus-night", next ? "1" : "0");
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] bg-background text-foreground">
-      {/* close */}
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center"
+      style={{ backgroundColor: bg, color: fg }}
+    >
       <button
-        onClick={() => finish({ completed: false })}
-        aria-label="Encerrar"
-        className="absolute right-4 top-4 rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        onClick={toggleNight}
+        aria-label={night ? "Modo claro" : "Modo noturno"}
+        className="absolute right-5 top-5 rounded-full p-2 opacity-60 transition-opacity hover:opacity-100"
+        style={{ color: subtle }}
       >
-        <X size={18} strokeWidth={1.75} />
+        {night ? <Sun size={18} strokeWidth={1.5} /> : <Moon size={18} strokeWidth={1.5} />}
       </button>
 
-      <div className="flex h-full flex-col items-center justify-center px-6">
-        {(projectName || active.tag) && (
-          <p className="mb-8 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-            {projectName}
-            {projectName && active.tag ? " · " : ""}
-            {active.tag}
-          </p>
-        )}
-
-        <AnalogClock
-          elapsedSeconds={elapsed}
-          plannedSeconds={active.plannedSeconds}
-          size={Math.min(420, typeof window !== "undefined" ? Math.min(window.innerWidth - 80, window.innerHeight - 320) : 360)}
-        />
-
-        <div className="mt-10 font-light tabular-nums tracking-tight text-foreground" style={{ fontSize: "clamp(2.5rem, 7vw, 4.5rem)" }}>
-          {display}
-        </div>
-
-        {active.pausedAt && (
-          <p className="mt-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Pausado</p>
-        )}
-
-        <div className="mt-12 flex items-center gap-2">
-          <button
-            onClick={togglePause}
-            className="inline-flex items-center gap-2 rounded-full border border-border/60 px-5 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
-          >
-            {active.pausedAt ? <Play size={14} /> : <Pause size={14} />}
-            {active.pausedAt ? "Retomar" : "Pausar"}
-          </button>
-          <button
-            onClick={() => finish({ completed: false })}
-            className="inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-sm text-background transition-opacity hover:opacity-90"
-          >
-            <Square size={12} />
-            Finalizar
-          </button>
-        </div>
-
-        <p className="mt-8 text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60">
-          espaço · pausar    esc · encerrar
-        </p>
+      <div
+        onClick={togglePause}
+        className="cursor-pointer select-none tabular-nums leading-none"
+        style={{
+          fontFamily: '"Crimson Pro", serif',
+          fontWeight: 300,
+          fontSize: "clamp(8rem, 26vw, 22rem)",
+          letterSpacing: "-0.04em",
+          color: fg,
+          opacity: active.pausedAt ? 0.45 : 1,
+          transition: "opacity 200ms ease",
+        }}
+      >
+        {display}
       </div>
+
+      <button
+        onClick={() => finish({ completed: false })}
+        className="absolute bottom-10 left-1/2 -translate-x-1/2 rounded-full px-6 py-2 text-xs uppercase tracking-[0.25em] transition-opacity hover:opacity-100"
+        style={{ color: subtle, opacity: 0.7, border: `1px solid ${subtle}33` }}
+      >
+        Finalizar
+      </button>
     </div>
   );
 }
