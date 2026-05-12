@@ -819,7 +819,13 @@ function HeroCard({
             </span>
           </div>
 
-          <SpendingHeatmap rows={rows} suggested={daily} month={month} />
+          <SpendingHeatmap
+            rows={rows}
+            suggested={daily}
+            month={month}
+            onOpenKind={onOpenKind}
+            onUpdateDiario={onUpdateDiario}
+          />
         </div>
       </div>
     </section>
