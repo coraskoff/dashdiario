@@ -278,6 +278,10 @@ function FinancePage() {
         onSaveVariable={(variable) =>
           updateMonthMutation.mutate({ month, variable_amount: variable })
         }
+        onOpenKind={(k, editId) => { setPanel(k); setPanelEditId(editId ?? null); }}
+        onUpdateDiario={(date, value) =>
+          updateDiarioMutation.mutate({ date, diario_override: value })
+        }
       />
 
       <SecondaryStats
