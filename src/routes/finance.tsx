@@ -274,6 +274,7 @@ function FinancePage() {
         summary={summary}
         openingBalance={openingBalance}
         hidden={hidden}
+        rows={rows}
         onSaveVariable={(variable) =>
           updateMonthMutation.mutate({ month, variable_amount: variable })
         }
@@ -624,6 +625,7 @@ function HeroCard({
   summary,
   openingBalance,
   hidden,
+  rows,
   onSaveVariable,
 }: {
   month: string;
@@ -631,6 +633,7 @@ function HeroCard({
   summary: ReturnType<typeof summarizeMonth>;
   openingBalance: number;
   hidden: boolean;
+  rows: DayRow[];
   onSaveVariable: (variable: number) => void;
 }) {
   const mask = "R$ ••••";
@@ -830,6 +833,8 @@ function HeroCard({
               Meta ao dia
             </span>
           </div>
+
+          <SpendingHeatmap rows={rows} suggested={daily} month={month} />
         </div>
       </div>
     </section>
@@ -851,7 +856,7 @@ function SecondaryStats({
   onOpenSaidas: () => void;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-4">
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border">
       <Stat label="Saldo inicial" value={openingBalance} hidden={hidden} />
       <StatButton
         label="Entradas"
@@ -2128,6 +2133,142 @@ function ProjectionCard({
           Zero
         </span>
       </div>
+    </div>
+  );
+}
+
+function SpendingHeatmap({ rows, suggested }: { rows: DayRow[]; suggested: number; month: string }) {
+  const WEEKDAY_LABELS = ["D", "S", "T", "Q", "Q", "S", "S"];
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
+
+  if (!rows?.length) return null;
+  const firstWeekday = rows[0].weekday;
+  const cells: (DayRow | null)[] = [...Array(firstWeekday).fill(null), ...rows];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  // Which dates are "active" for the detail strip
+  const activeSet = selectedDates.size > 0 ? selectedDates : hoverDate ? new Set([hoverDate]) : new Set<string>();
+  const activeRows = rows.filter((r) => activeSet.has(r.date));
+  const isMulti = selectedDates.size > 1;
+
+  const totalEntrada = activeRows.reduce((s, r) => s + r.entrada, 0);
+  const totalSaida = activeRows.reduce((s, r) => s + r.saida, 0);
+  const totalDiario = activeRows.reduce((s, r) => s + r.diario, 0);
+  const allFuture = activeRows.length > 0 && activeRows.every((r) => r.isFuture);
+
+  function cellColor(row: DayRow): string {
+    if (row.isFuture || suggested <= 0) return "";
+    const ratio = row.diario / suggested;
+    if (ratio === 0) return "#14532d";
+    if (ratio <= 0.25) return "#15803d";
+    if (ratio <= 0.5) return "#16a34a";
+    if (ratio <= 0.85) return "#22c55e";
+    if (ratio <= 1) return "#86efac";
+    if (ratio <= 1.15) return "#fca5a5";
+    if (ratio <= 1.5) return "#dc2626";
+    if (ratio <= 2) return "#b91c1c";
+    if (ratio <= 3) return "#7f1d1d";
+    return "#450a0a";
+  }
+
+  function handleClick(row: DayRow, e: React.MouseEvent) {
+    const date = row.date;
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedDates((prev) => {
+        const next = new Set(prev);
+        if (next.has(date)) next.delete(date);
+        else next.add(date);
+        return next;
+      });
+    } else {
+      setSelectedDates((prev) => {
+        if (prev.size === 1 && prev.has(date)) return new Set();
+        return new Set([date]);
+      });
+    }
+  }
+
+  const stripVisible = activeRows.length > 0;
+
+  return (
+    <div
+      className="mt-4 border-t pt-3"
+      onMouseLeave={() => setHoverDate(null)}
+    >
+      <div
+        className="grid w-fit"
+        style={{ gridTemplateColumns: "repeat(7, 1rem)", gap: "2px" }}
+      >
+        {WEEKDAY_LABELS.map((label, i) => (
+          <div key={`hd-${i}`} className="text-center text-[8px] leading-3 text-muted-foreground/50">
+            {label}
+          </div>
+        ))}
+        {cells.map((row, i) => {
+          if (!row) return <div key={i} className="h-4 rounded-[3px]" />;
+          const color = cellColor(row);
+          const isNeutral = row.isFuture || suggested <= 0;
+          const isActive = activeSet.has(row.date);
+          const isSelected = selectedDates.has(row.date);
+          const dimmed = activeSet.size > 0 && !isActive;
+          return (
+            <div
+              key={i}
+              className={cn(
+                "h-4 rounded-[3px] cursor-pointer transition-opacity",
+                row.isToday && "ring-1 ring-offset-[1px] ring-foreground/50",
+                isNeutral && "bg-muted/50",
+                isSelected && "ring-1 ring-white/70",
+                dimmed && "opacity-40",
+              )}
+              style={!isNeutral ? { backgroundColor: color } : undefined}
+              onMouseEnter={() => { if (selectedDates.size === 0) setHoverDate(row.date); }}
+              onClick={(e) => handleClick(row, e)}
+            />
+          );
+        })}
+      </div>
+
+      {/* Detail strip */}
+      <div className={cn(
+        "overflow-hidden transition-all",
+        stripVisible ? "mt-2 max-h-40" : "max-h-0",
+      )}>
+        {stripVisible && (
+          <div className="rounded-md bg-muted/50 px-3 py-2">
+            <p className="text-[11px] font-semibold">
+              {isMulti
+                ? `${selectedDates.size} dias selecionados`
+                : formatDayLabel(activeRows[0].date)}
+              {allFuture && !isMulti && (
+                <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">Previsão</span>
+              )}
+            </p>
+            <div className="mt-1.5 grid grid-cols-3 gap-x-3 text-[10px] text-muted-foreground">
+              <div className="flex flex-col gap-0.5">
+                <span>Entradas</span>
+                <span className="font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">
+                  +{formatCurrencyCompact(totalEntrada)}
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span>Saídas</span>
+                <span className="font-medium text-rose-600 dark:text-rose-400 tabular-nums">
+                  -{formatCurrencyCompact(totalSaida)}
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span>Diário</span>
+                <span className="font-medium text-foreground tabular-nums">
+                  {formatCurrencyCompact(totalDiario)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
