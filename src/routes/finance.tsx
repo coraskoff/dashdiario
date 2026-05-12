@@ -803,11 +803,11 @@ function HeroCard({
                   overPace ? "bg-rose-500" : "bg-emerald-500",
                 )}
               />
-              {hidden ? "Gasto real" : `Gasto real (${formatCurrencyCompact(spentReal)})`}
+              {hidden ? "Gasto" : `Gasto (${formatCurrencyCompact(spentReal)})`}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-px bg-foreground/70" />
-              Meta ao dia
+              Meta
             </span>
           </div>
 
@@ -2174,7 +2174,7 @@ function SpendingHeatmap({ rows, suggested }: { rows: DayRow[]; suggested: numbe
       onMouseLeave={() => setHoverDate(null)}
     >
       <div
-        className="grid w-fit"
+        className="mx-auto grid w-fit"
         style={{ gridTemplateColumns: "repeat(7, 1rem)", gap: "2px" }}
       >
         {WEEKDAY_LABELS.map((label, i) => (
