@@ -278,6 +278,10 @@ function FinancePage() {
         onSaveVariable={(variable) =>
           updateMonthMutation.mutate({ month, variable_amount: variable })
         }
+        onOpenKind={(k, editId) => { setPanel(k); setPanelEditId(editId ?? null); }}
+        onUpdateDiario={(date, value) =>
+          updateDiarioMutation.mutate({ date, diario_override: value })
+        }
       />
 
       <SecondaryStats
@@ -627,6 +631,8 @@ function HeroCard({
   hidden,
   rows,
   onSaveVariable,
+  onOpenKind,
+  onUpdateDiario,
 }: {
   month: string;
   config: FinanceMonth | undefined;
@@ -635,6 +641,8 @@ function HeroCard({
   hidden: boolean;
   rows: DayRow[];
   onSaveVariable: (variable: number) => void;
+  onOpenKind: (kind: "entrada" | "saida", editId?: string | null) => void;
+  onUpdateDiario: (date: string, value: number | null) => void;
 }) {
   const mask = "R$ ••••";
   const [editing, setEditing] = useState(false);
@@ -811,7 +819,13 @@ function HeroCard({
             </span>
           </div>
 
-          <SpendingHeatmap rows={rows} suggested={daily} month={month} />
+          <SpendingHeatmap
+            rows={rows}
+            suggested={daily}
+            month={month}
+            onOpenKind={onOpenKind}
+            onUpdateDiario={onUpdateDiario}
+          />
         </div>
       </div>
     </section>
@@ -2114,10 +2128,23 @@ function ProjectionCard({
   );
 }
 
-function SpendingHeatmap({ rows, suggested }: { rows: DayRow[]; suggested: number; month: string }) {
+function SpendingHeatmap({
+  rows,
+  suggested,
+  onOpenKind,
+  onUpdateDiario,
+}: {
+  rows: DayRow[];
+  suggested: number;
+  month: string;
+  onOpenKind?: (kind: "entrada" | "saida", editId?: string | null) => void;
+  onUpdateDiario?: (date: string, value: number | null) => void;
+}) {
   const WEEKDAY_LABELS = ["D", "S", "T", "Q", "Q", "S", "S"];
   const [hoverDate, setHoverDate] = useState<string | null>(null);
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
+  const [diarioEdit, setDiarioEdit] = useState<string>("");
+  const [editingDiario, setEditingDiario] = useState(false);
 
   if (!rows?.length) return null;
   const firstWeekday = rows[0].weekday;
@@ -2167,6 +2194,26 @@ function SpendingHeatmap({ rows, suggested }: { rows: DayRow[]; suggested: numbe
   }
 
   const stripVisible = activeRows.length > 0;
+  const singleRow = !isMulti && activeRows.length === 1 ? activeRows[0] : null;
+  const canEdit = !!singleRow && selectedDates.size === 1;
+
+  function handleKindClick(kind: "entrada" | "saida") {
+    if (!singleRow || !onOpenKind) return;
+    const txs = singleRow.transactions.filter((t) => t.kind === kind);
+    onOpenKind(kind, txs.length === 1 ? txs[0].id : null);
+  }
+
+  function commitDiario() {
+    if (!singleRow || !onUpdateDiario) { setEditingDiario(false); return; }
+    const trimmed = diarioEdit.trim();
+    if (trimmed === "") {
+      onUpdateDiario(singleRow.date, null);
+    } else {
+      const v = parseAmount(trimmed);
+      if (Number.isFinite(v) && v >= 0) onUpdateDiario(singleRow.date, v);
+    }
+    setEditingDiario(false);
+  }
 
   return (
     <div
@@ -2225,21 +2272,68 @@ function SpendingHeatmap({ rows, suggested }: { rows: DayRow[]; suggested: numbe
             <div className="mt-1.5 grid grid-cols-3 gap-x-3 text-[10px] text-muted-foreground">
               <div className="flex flex-col gap-0.5">
                 <span>Entradas</span>
-                <span className="font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">
-                  +{formatCurrencyCompact(totalEntrada)}
-                </span>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => handleKindClick("entrada")}
+                    className="text-left font-medium text-emerald-600 dark:text-emerald-400 tabular-nums hover:underline"
+                  >
+                    +{formatCurrencyCompact(totalEntrada)}
+                  </button>
+                ) : (
+                  <span className="font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">
+                    +{formatCurrencyCompact(totalEntrada)}
+                  </span>
+                )}
               </div>
               <div className="flex flex-col gap-0.5">
                 <span>Saídas</span>
-                <span className="font-medium text-rose-600 dark:text-rose-400 tabular-nums">
-                  -{formatCurrencyCompact(totalSaida)}
-                </span>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => handleKindClick("saida")}
+                    className="text-left font-medium text-rose-600 dark:text-rose-400 tabular-nums hover:underline"
+                  >
+                    -{formatCurrencyCompact(totalSaida)}
+                  </button>
+                ) : (
+                  <span className="font-medium text-rose-600 dark:text-rose-400 tabular-nums">
+                    -{formatCurrencyCompact(totalSaida)}
+                  </span>
+                )}
               </div>
               <div className="flex flex-col gap-0.5">
                 <span>Diário</span>
-                <span className="font-medium text-foreground tabular-nums">
-                  {formatCurrencyCompact(totalDiario)}
-                </span>
+                {canEdit && editingDiario ? (
+                  <Input
+                    autoFocus
+                    inputMode="decimal"
+                    value={diarioEdit}
+                    onChange={(e) => setDiarioEdit(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitDiario();
+                      else if (e.key === "Escape") setEditingDiario(false);
+                    }}
+                    onBlur={commitDiario}
+                    className="h-6 w-20 px-1 text-[10px]"
+                  />
+                ) : canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDiarioEdit(formatInput(singleRow!.diario));
+                      setEditingDiario(true);
+                    }}
+                    className="text-left font-medium text-foreground tabular-nums hover:underline"
+                  >
+                    {formatCurrencyCompact(totalDiario)}
+                    {singleRow!.hasOverride && <span className="ml-1 text-[8px] text-muted-foreground">●</span>}
+                  </button>
+                ) : (
+                  <span className="font-medium text-foreground tabular-nums">
+                    {formatCurrencyCompact(totalDiario)}
+                  </span>
+                )}
               </div>
             </div>
           </div>
