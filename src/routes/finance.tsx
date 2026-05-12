@@ -2268,6 +2268,21 @@ function SpendingHeatmap({
               {allFuture && !isMulti && (
                 <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">Previsão</span>
               )}
+              {!isMulti && (
+                <span className="ml-2 text-[10px] font-normal text-muted-foreground">
+                  Saldo:{" "}
+                  <span
+                    className={cn(
+                      "font-medium tabular-nums",
+                      activeRows[0].saldo >= 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-rose-600 dark:text-rose-400",
+                    )}
+                  >
+                    {formatCurrencyCompact(activeRows[0].saldo)}
+                  </span>
+                </span>
+              )}
             </p>
             <div className="mt-1.5 grid grid-cols-3 gap-x-3 text-[10px] text-muted-foreground">
               <div className="flex flex-col gap-0.5">
