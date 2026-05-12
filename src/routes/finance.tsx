@@ -1024,38 +1024,34 @@ function Pulse({
           <div className="min-w-0 text-xs leading-relaxed">
             {isOver ? (
               <>
-                Você está{" "}
                 <strong className="font-semibold tabular-nums">
                   {formatCurrency(insightDelta)}
                 </strong>{" "}
-                acima da meta no período.
+                acima da meta.
                 {remainingDays > 0 && recalibrated > 0 && (
                   <>
-                    {" "}Para equilibrar até o fim do mês, gaste no máximo{" "}
+                    {" "}Gaste abaixo de{" "}
                     <strong className="font-semibold tabular-nums">
                       {formatCurrency(recalibrated)}
-                    </strong>{" "}
-                    por dia nos {remainingDays} dias restantes.
+                    </strong>
+                    /dia.
                   </>
                 )}
               </>
             ) : (
               <>
-                Você está{" "}
                 <strong className="font-semibold tabular-nums">
                   {formatCurrency(Math.abs(insightDelta))}
                 </strong>{" "}
-                abaixo da meta. Continua no ritmo —
-                {remainingDays > 0 && recalibrated > 0 ? (
+                abaixo da meta.
+                {remainingDays > 0 && recalibrated > 0 && (
                   <>
-                    {" "}folga de{" "}
+                    {" "}Pode gastar até{" "}
                     <strong className="font-semibold tabular-nums">
                       {formatCurrency(recalibrated)}
                     </strong>
-                    /dia pelos próximos {remainingDays} dias.
+                    /dia.
                   </>
-                ) : (
-                  <> bom controle.</>
                 )}
               </>
             )}
