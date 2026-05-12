@@ -631,6 +631,8 @@ function HeroCard({
   hidden,
   rows,
   onSaveVariable,
+  onOpenKind,
+  onUpdateDiario,
 }: {
   month: string;
   config: FinanceMonth | undefined;
@@ -639,6 +641,8 @@ function HeroCard({
   hidden: boolean;
   rows: DayRow[];
   onSaveVariable: (variable: number) => void;
+  onOpenKind: (kind: "entrada" | "saida", editId?: string | null) => void;
+  onUpdateDiario: (date: string, value: number | null) => void;
 }) {
   const mask = "R$ ••••";
   const [editing, setEditing] = useState(false);
