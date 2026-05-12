@@ -685,12 +685,9 @@ function HeroCard({
       <div className="grid gap-px bg-border md:grid-cols-2">
         {/* Bloco esquerdo: projeção */}
         <div className="min-w-0 bg-card p-4 md:p-6">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-            Projeção de saldo — fim do mês
-          </p>
           <p
             className={cn(
-              "mt-2 break-words text-3xl font-semibold leading-tight tracking-tight tabular-nums sm:text-4xl md:text-5xl",
+              "break-words text-3xl font-semibold leading-tight tracking-tight tabular-nums sm:text-4xl md:text-5xl",
               hidden
                 ? "text-muted-foreground"
                 : isProjPositive
@@ -700,23 +697,6 @@ function HeroCard({
           >
             {hidden ? mask : formatCurrency(projected)}
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {variable > 0 && !hidden && (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums",
-                  aboveMeta
-                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                    : "bg-rose-500/15 text-rose-700 dark:text-rose-300",
-                )}
-              >
-                {aboveMeta ? "↑" : "↓"} {formatCurrency(Math.abs(metaDelta))}{" "}
-                {aboveMeta ? "abaixo da meta" : "acima da meta"}
-              </span>
-            )}
-            <span className="text-xs text-muted-foreground">se mantiver o ritmo atual</span>
-          </div>
-
           {/* Contexto: variável (editável) + diário sugerido */}
           <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 border-t pt-3 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
@@ -764,11 +744,8 @@ function HeroCard({
         {/* Bloco direito: gasto vs tempo */}
         <div className="min-w-0 bg-card p-4 md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-2">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              Gasto vs tempo decorrido
-            </p>
             {variable > 0 && (
-              <p className="text-[11px] tabular-nums text-muted-foreground sm:text-xs">
+              <p className="ml-auto text-[11px] tabular-nums text-muted-foreground sm:text-xs">
                 <span className="font-medium text-foreground">{hidden ? "••%" : `${pctMonth}%`}</span> do mês /{" "}
                 <span
                   className={cn(
