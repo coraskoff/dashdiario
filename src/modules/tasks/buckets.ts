@@ -1,5 +1,10 @@
 import type { Bucket, Task } from "./types";
 
+function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /** yyyy-mm-dd in local time. */
 export function toIsoDate(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -84,4 +89,49 @@ export function groupByBucket(tasks: Task[]): Record<Bucket, Task[]> {
   const out: Record<Bucket, Task[]> = { week: [], today: [], tomorrow: [], later: [] };
   for (const t of tasks) out[bucketOf(t)].push(t);
   return out;
+}
+
+export function endOfWeekIso(): string {
+  const d = new Date();
+  const day = d.getDay(); // 0=sun … 6=sat
+  const diff = day === 0 ? 0 : 7 - day; // days until Sunday
+  d.setDate(d.getDate() + diff);
+  return toIsoDate(d);
+}
+
+export interface FutureWeekGroup {
+  label: string;
+  isoStart: string;
+  tasks: Task[];
+}
+
+export function groupFutureTasks(tasks: Task[]): FutureWeekGroup[] {
+  const sorted = [...tasks].sort((a, b) => a.due_date!.localeCompare(b.due_date!));
+  const weeks = new Map<string, Task[]>();
+  for (const task of sorted) {
+    const d = parseIsoDate(task.due_date!);
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Monday of that week
+    const key = toIsoDate(mon);
+    if (!weeks.has(key)) weeks.set(key, []);
+    weeks.get(key)!.push(task);
+  }
+
+  const today = new Date();
+  const thisMonday = new Date(today);
+  thisMonday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+
+  return Array.from(weeks.entries()).map(([isoStart, wTasks]) => {
+    const monDate = parseIsoDate(isoStart);
+    const weeksAhead = Math.round(
+      (monDate.getTime() - thisMonday.getTime()) / (7 * 86400000),
+    );
+    const label =
+      weeksAhead === 1
+        ? "Próxima semana"
+        : weeksAhead === 2
+          ? "Daqui a 2 semanas"
+          : `Daqui a ${weeksAhead} semanas`;
+    return { label, isoStart, tasks: wTasks };
+  });
 }

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useRef, useState } from "react";
 import { useMobileFab } from "@/routes/__root";
 import { toast } from "sonner";
-import { ArrowRight, Calendar as CalendarIcon, Check, CheckCheck, FolderInput, GripVertical, Pencil, Plus, RotateCcw, Timer as TimerIcon, Trash2, X } from "lucide-react";
+import { ArrowRight, Calendar as CalendarIcon, Check, CheckCheck, ChevronLeft, ChevronRight, FolderInput, GripVertical, Pencil, Plus, RotateCcw, Timer as TimerIcon, Trash2, X } from "lucide-react";
 import { StartFocusDialog } from "@/components/timer/StartFocusDialog";
 import { Pulse } from "@/components/Pulse";
 import {
@@ -20,6 +20,8 @@ import type { Bucket, Task, TaskStatus } from "@/modules/tasks/types";
 import {
   bucketDueDate,
   groupByBucket,
+  groupFutureTasks,
+  endOfWeekIso,
   toIsoDate,
   todayIso,
   tomorrowIso,
@@ -100,6 +102,17 @@ function TasksPage() {
   });
 
   const [activeProject, setActiveProject] = useState<ActiveProject>("all");
+  const [view, setView] = useState<"day" | "week">("week");
+  React.useEffect(() => {
+    const saved = localStorage.getItem("tasks:view");
+    if (saved === "day" || saved === "week") setView(saved);
+  }, []);
+  const changeView = (v: "day" | "week") => {
+    setView(v);
+    localStorage.setItem("tasks:view", v);
+  };
+  // Dia selecionado no modo Hoje — permite navegar para ontem, amanhã, etc.
+  const [selectedIso, setSelectedIso] = useState(todayIso());
   const todayQuickAddRef = useRef<HTMLInputElement>(null);
   useMobileFab(() => todayQuickAddRef.current?.focus());
 
@@ -123,6 +136,13 @@ function TasksPage() {
     () =>
       visibleTasks.filter(
         (t) => t.status === "pending" && !!t.due_date && t.due_date < todayIso(),
+      ),
+    [visibleTasks],
+  );
+  const futureTasks = useMemo(
+    () =>
+      visibleTasks.filter(
+        (t) => t.status === "pending" && !!t.due_date && t.due_date > endOfWeekIso(),
       ),
     [visibleTasks],
   );
@@ -356,6 +376,22 @@ function TasksPage() {
         ),
     [visibleTasks],
   );
+  // Modo Hoje — tarefas do dia selecionado (pendentes por vencimento,
+  // concluídas pelo dia em que foram feitas, estilo diário de papel)
+  const dayPending = useMemo(
+    () =>
+      visibleTasks.filter(
+        (t) => t.status === "pending" && t.due_date === selectedIso,
+      ),
+    [visibleTasks, selectedIso],
+  );
+  const completedOnDay = useMemo(
+    () =>
+      completedTasks.filter(
+        (t) => t.completed_at && toIsoDate(new Date(t.completed_at)) === selectedIso,
+      ),
+    [completedTasks, selectedIso],
+  );
 
   const columnHandlers = {
     onToggle: (t: Task) =>
@@ -394,13 +430,37 @@ function TasksPage() {
       <header className="flex items-end justify-between gap-6">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            {weekRangeLabel()}
+            {view === "day" ? dayLabel(selectedIso) : weekRangeLabel()}
           </p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
-            Sua semana.
+            {view === "day" ? "Seu dia." : "Sua semana."}
           </h1>
         </div>
         <div className="flex items-center gap-4">
+          <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted/70 p-0.5">
+            <button
+              onClick={() => changeView("day")}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm transition-all",
+                view === "day"
+                  ? "bg-card font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Hoje
+            </button>
+            <button
+              onClick={() => changeView("week")}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm transition-all",
+                view === "week"
+                  ? "bg-card font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Geral
+            </button>
+          </div>
           <div className="hidden text-right text-sm text-muted-foreground md:block">
             <span className="tabular-nums text-foreground">{pendingTotal}</span>{" "}
             {pendingTotal === 1 ? "tarefa pendente" : "tarefas pendentes"}
@@ -425,10 +485,31 @@ function TasksPage() {
         counts={counts}
       />
 
+      {/* Modo Hoje — visão focada de um dia só, inspirada em lista de papel */}
+      {view === "day" && (
+        <DayFocus
+          iso={selectedIso}
+          tasks={dayPending}
+          completedOnDay={completedOnDay}
+          overdueCount={overdueTasks.length}
+          onSwitchToWeek={() => changeView("week")}
+          onNavigate={setSelectedIso}
+          onAdd={(title) =>
+            create.mutate({ title, due_date: selectedIso, project_id: newTaskProjectId })
+          }
+          loading={isLoading}
+          quickAddRef={todayQuickAddRef}
+          {...columnHandlers}
+        />
+      )}
+
+      {view === "week" && (
+      <>
       {/* "Semana" — horizontal strip on top: macro plan, distinct from daily focus */}
       <WeekStrip
         tasks={weekNoDate}
         overdueTasks={overdueTasks}
+        futureTasks={futureTasks}
         onAdd={(title) =>
           create.mutate(
             { title, due_date: null, project_id: newTaskProjectId },
@@ -523,6 +604,8 @@ function TasksPage() {
           </div>
         </section>
       )}
+      </>
+      )}
 
       <TaskDetailPanel
         task={detailTask}
@@ -581,20 +664,23 @@ function relDateLabel(due: string): string {
 function WeekStrip({
   tasks,
   overdueTasks,
+  futureTasks,
   onAdd,
   loading,
   ...handlers
 }: ColumnHandlers & {
   tasks: Task[];
   overdueTasks: Task[];
+  futureTasks: Task[];
   onAdd: (title: string) => void;
   loading: boolean;
 }) {
   const [drag, setDrag] = useState(false);
-  const [activeTab, setActiveTab] = useState<"backlog" | "atrasadas">("backlog");
+  const [activeTab, setActiveTab] = useState<"backlog" | "atrasadas" | "futuras">("backlog");
 
   const backlogCount = tasks.filter((t) => t.status === "pending").length;
   const overdueCount = overdueTasks.length;
+  const futureCount = futureTasks.length;
 
   return (
     <section
@@ -645,6 +731,22 @@ function WeekStrip({
             {overdueCount > 0 && (
               <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold tabular-nums text-white">
                 {overdueCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("futuras")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-all",
+              activeTab === "futuras"
+                ? "bg-card font-medium text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Futuras
+            {futureCount > 0 && (
+              <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                {futureCount}
               </span>
             )}
           </button>
@@ -717,6 +819,30 @@ function WeekStrip({
           )}
         </div>
       )}
+
+      {/* Futuras tab */}
+      {activeTab === "futuras" && (
+        <div className="space-y-4">
+          {futureCount === 0 ? (
+            <span className="text-sm text-muted-foreground">
+              Nenhuma tarefa agendada para além desta semana.
+            </span>
+          ) : (
+            groupFutureTasks(futureTasks).map(({ label, isoStart, tasks: wTasks }) => (
+              <div key={isoStart}>
+                <p className="mb-2 px-0.5 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  {label}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {wTasks.map((t) => (
+                    <WeekChip key={t.id} task={t} {...handlers} />
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -773,6 +899,163 @@ function WeekChip({
             showProjectDot={showProjectDot}
           />
     </div>
+  );
+}
+
+/* ---------------------- Day focus (modo Hoje) ---------------------- */
+
+function DayFocus({
+  iso,
+  tasks,
+  completedOnDay,
+  overdueCount,
+  onSwitchToWeek,
+  onNavigate,
+  onAdd,
+  loading,
+  quickAddRef,
+  ...handlers
+}: ColumnHandlers & {
+  iso: string;
+  tasks: Task[];
+  completedOnDay: Task[];
+  overdueCount: number;
+  onSwitchToWeek: () => void;
+  onNavigate: (iso: string) => void;
+  onAdd: (title: string) => void;
+  loading: boolean;
+  quickAddRef?: React.RefObject<HTMLInputElement | null>;
+}) {
+  const [drag, setDrag] = useState(false);
+  const pending = tasks.filter((t) => t.status === "pending");
+  const isToday = iso === todayIso();
+
+  return (
+    <section
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDrag(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrag(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDrag(false);
+        const id = e.dataTransfer.getData("text/task-id");
+        if (id) handlers.onSetDate(id, iso);
+      }}
+      className={`mx-auto flex w-full max-w-2xl flex-col rounded-2xl border bg-card transition-colors ${
+        drag ? "border-foreground/40 bg-secondary/60" : "border-border"
+      }`}
+    >
+      <header className="flex items-center justify-between gap-4 px-6 pt-6">
+        <div className="group/nav flex items-baseline gap-1">
+          <button
+            onClick={() => onNavigate(addDaysIso(iso, -1))}
+            aria-label="Dia anterior"
+            className="self-center rounded p-1 text-muted-foreground/0 transition-colors group-hover/nav:text-muted-foreground/60 hover:!text-foreground"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span
+            className={`text-5xl font-semibold tabular-nums leading-none ${
+              isToday ? "text-foreground" : "text-muted-foreground"
+            }`}
+          >
+            {dayNumber(iso)}
+          </span>
+          <div className="ml-2 flex flex-col">
+            <span className="text-sm font-semibold text-foreground">
+              {relDayName(iso)}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {weekdayLabel(iso)}
+            </span>
+          </div>
+          <button
+            onClick={() => onNavigate(addDaysIso(iso, 1))}
+            aria-label="Próximo dia"
+            className="self-center rounded p-1 text-muted-foreground/0 transition-colors group-hover/nav:text-muted-foreground/60 hover:!text-foreground"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          {!isToday && (
+            <button
+              onClick={() => onNavigate(todayIso())}
+              className="ml-2 text-xs text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground"
+            >
+              voltar a hoje
+            </button>
+          )}
+        </div>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {pending.length}
+        </span>
+      </header>
+
+      <div className="px-6 pt-4">
+        <QuickAdd
+          placeholder={isToday ? "O que move o dia?" : "Adicionar neste dia…"}
+          onAdd={onAdd}
+          inputRef={quickAddRef}
+        />
+      </div>
+
+      <ul className="flex-1 px-3 pb-4 pt-2">
+        {loading && (
+          <li className="flex items-center justify-center px-3 py-8">
+            <Pulse size={10} />
+          </li>
+        )}
+        {!loading && pending.length === 0 && completedOnDay.length === 0 && (
+          <li className="px-3 py-10 text-sm text-muted-foreground">
+            {isToday
+              ? "Dia limpo. Capriche em uma coisa só."
+              : iso < todayIso()
+                ? "Nada registrado neste dia."
+                : "Nada agendado."}
+          </li>
+        )}
+        {pending.map((t) =>
+          handlers.editingId === t.id ? (
+            <EditRow
+              key={t.id}
+              task={t}
+              onSave={(title, desc) => handlers.onSaveEdit(t.id, title, desc)}
+              onCancel={handlers.onCancelEdit}
+            />
+          ) : (
+            <TaskRow key={t.id} task={t} accent {...handlers} />
+          ),
+        )}
+        {completedOnDay.length > 0 && (
+          <>
+            {pending.length > 0 && (
+              <li aria-hidden className="mx-3 my-2 h-px bg-border/70" />
+            )}
+            {completedOnDay.map((t) => (
+              <TaskRow key={t.id} task={t} {...handlers} />
+            ))}
+          </>
+        )}
+      </ul>
+
+      {isToday && overdueCount > 0 && (
+        <div className="border-t border-border/70 px-6 py-3">
+          <button
+            onClick={onSwitchToWeek}
+            className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <span className="font-semibold tabular-nums text-rose-500">
+              {overdueCount}
+            </span>{" "}
+            {overdueCount === 1 ? "tarefa atrasada" : "tarefas atrasadas"} — ver na
+            visão geral →
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1341,6 +1624,29 @@ function weekdayLabel(iso: string): string {
   return new Intl.DateTimeFormat("pt-BR", { weekday: "long" })
     .format(new Date(y, m - 1, d))
     .toLowerCase();
+}
+
+function dayLabel(iso: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  }).format(parseIsoDate(iso));
+}
+
+function addDaysIso(iso: string, delta: number): string {
+  const d = parseIsoDate(iso);
+  d.setDate(d.getDate() + delta);
+  return toIsoLocal(d);
+}
+
+function relDayName(iso: string): string {
+  const today = todayIso();
+  if (iso === today) return "Hoje";
+  if (iso === addDaysIso(today, -1)) return "Ontem";
+  if (iso === addDaysIso(today, 1)) return "Amanhã";
+  const [, m, d] = iso.split("-");
+  return `${d}/${m}`;
 }
 
 function weekRangeLabel(): string {
