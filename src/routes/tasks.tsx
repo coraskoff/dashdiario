@@ -20,8 +20,6 @@ import type { Bucket, Task, TaskStatus } from "@/modules/tasks/types";
 import {
   bucketDueDate,
   groupByBucket,
-  groupFutureTasks,
-  endOfWeekIso,
   toIsoDate,
   todayIso,
   tomorrowIso,
@@ -128,24 +126,10 @@ function TasksPage() {
   // que ainda caem na semana corrente vão para o rodapé "Resto da semana".
   const restIsos = useMemo(() => restOfWeekIsos(), []);
   const restIsoSet = useMemo(() => new Set(restIsos), [restIsos]);
-  const weekNoDate = useMemo(
-    () => buckets.week.filter((t) => !t.due_date),
-    [buckets.week],
-  );
-  const overdueTasks = useMemo(
-    () =>
-      visibleTasks.filter(
-        (t) => t.status === "pending" && !!t.due_date && t.due_date < todayIso(),
-      ),
-    [visibleTasks],
-  );
-  const futureTasks = useMemo(
-    () =>
-      visibleTasks.filter(
-        (t) => t.status === "pending" && !!t.due_date && t.due_date > endOfWeekIso(),
-      ),
-    [visibleTasks],
-  );
+  // Backlog: tudo que não caiu nos 3 dias em foco — sem data OU data além
+  // desta semana (a "seção de futuras" foi removida; essas tarefas ficam
+  // aqui, com o próprio chip mostrando a data).
+  const weekNoDate = buckets.week;
   const tasksByDate = useMemo(() => {
     const map: Record<string, Task[]> = {};
     for (const t of buckets.week) {
@@ -378,13 +362,18 @@ function TasksPage() {
   );
   // Modo Hoje — tarefas do dia selecionado (pendentes por vencimento,
   // concluídas pelo dia em que foram feitas, estilo diário de papel)
-  const dayPending = useMemo(
-    () =>
-      visibleTasks.filter(
-        (t) => t.status === "pending" && t.due_date === selectedIso,
-      ),
-    [visibleTasks, selectedIso],
-  );
+  const dayPending = useMemo(() => {
+    if (selectedIso === todayIso()) {
+      // Hoje também acumula o que ficou atrasado — não existe uma seção
+      // separada de "atrasadas", tudo que já venceu aparece junto no dia.
+      return visibleTasks.filter(
+        (t) => t.status === "pending" && !!t.due_date && t.due_date <= selectedIso,
+      );
+    }
+    return visibleTasks.filter(
+      (t) => t.status === "pending" && t.due_date === selectedIso,
+    );
+  }, [visibleTasks, selectedIso]);
   const completedOnDay = useMemo(
     () =>
       completedTasks.filter(
@@ -491,8 +480,6 @@ function TasksPage() {
           iso={selectedIso}
           tasks={dayPending}
           completedOnDay={completedOnDay}
-          overdueCount={overdueTasks.length}
-          onSwitchToWeek={() => changeView("week")}
           onNavigate={setSelectedIso}
           onAdd={(title) =>
             create.mutate({ title, due_date: selectedIso, project_id: newTaskProjectId })
@@ -508,8 +495,6 @@ function TasksPage() {
       {/* "Semana" — horizontal strip on top: macro plan, distinct from daily focus */}
       <WeekStrip
         tasks={weekNoDate}
-        overdueTasks={overdueTasks}
-        futureTasks={futureTasks}
         onAdd={(title) =>
           create.mutate(
             { title, due_date: null, project_id: newTaskProjectId },
@@ -663,24 +648,16 @@ function relDateLabel(due: string): string {
 
 function WeekStrip({
   tasks,
-  overdueTasks,
-  futureTasks,
   onAdd,
   loading,
   ...handlers
 }: ColumnHandlers & {
   tasks: Task[];
-  overdueTasks: Task[];
-  futureTasks: Task[];
   onAdd: (title: string) => void;
   loading: boolean;
 }) {
   const [drag, setDrag] = useState(false);
-  const [activeTab, setActiveTab] = useState<"backlog" | "atrasadas" | "futuras">("backlog");
-
-  const backlogCount = tasks.filter((t) => t.status === "pending").length;
-  const overdueCount = overdueTasks.length;
-  const futureCount = futureTasks.length;
+  const backlogTasks = tasks.filter((t) => t.status === "pending");
 
   return (
     <section
@@ -699,150 +676,18 @@ function WeekStrip({
         drag ? "border-foreground/40 bg-secondary/60" : "border-border"
       }`}
     >
-      {/* Segmented control header */}
-      <div className="pb-4">
-        <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted/70 p-0.5">
-          <button
-            onClick={() => setActiveTab("backlog")}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-all",
-              activeTab === "backlog"
-                ? "bg-card font-medium text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Backlog
-            {backlogCount > 0 && (
-              <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground">
-                {backlogCount}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab("atrasadas")}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-all",
-              activeTab === "atrasadas"
-                ? "bg-card font-medium text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Atrasadas
-            {overdueCount > 0 && (
-              <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold tabular-nums text-white">
-                {overdueCount}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab("futuras")}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-all",
-              activeTab === "futuras"
-                ? "bg-card font-medium text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Futuras
-            {futureCount > 0 && (
-              <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground">
-                {futureCount}
-              </span>
-            )}
-          </button>
-        </div>
+      <QuickAdd placeholder="Anotar uma ideia, meta ou recado…" onAdd={onAdd} />
+      <div className="mt-4 flex flex-wrap gap-2">
+        {loading && <Pulse size={10} className="ml-1" />}
+        {!loading && backlogTasks.length === 0 && (
+          <span className="text-sm text-muted-foreground">
+            Tudo já tem dia. Use aqui para guardar o que vem sem hora.
+          </span>
+        )}
+        {backlogTasks.map((t) => (
+          <WeekChip key={t.id} task={t} {...handlers} />
+        ))}
       </div>
-
-      {/* Backlog tab — unchanged behavior */}
-      {activeTab === "backlog" && (
-        <>
-          <QuickAdd placeholder="Anotar uma ideia, meta ou recado…" onAdd={onAdd} />
-          <div className="mt-4 flex flex-wrap gap-2">
-            {loading && <Pulse size={10} className="ml-1" />}
-            {!loading && backlogCount === 0 && (
-              <span className="text-sm text-muted-foreground">
-                Tudo já tem dia. Use aqui para guardar o que vem sem hora.
-              </span>
-            )}
-            {tasks
-              .filter((t) => t.status === "pending")
-              .map((t) => (
-                <WeekChip key={t.id} task={t} {...handlers} />
-              ))}
-          </div>
-        </>
-      )}
-
-      {/* Atrasadas tab */}
-      {activeTab === "atrasadas" && (
-        <div className="flex flex-wrap gap-2">
-          {overdueCount === 0 ? (
-            <span className="text-sm text-muted-foreground">Nenhuma tarefa atrasada.</span>
-          ) : (
-            overdueTasks.map((t) => {
-              const project = t.project_id ? handlers.projectsById[t.project_id] : null;
-              return (
-                <div
-                  key={t.id}
-                  draggable
-                  onDragStart={(e) => e.dataTransfer.setData("text/task-id", t.id)}
-                  onClick={(e) => {
-                    const target = e.target as HTMLElement;
-                    if (target.closest("button, a, [role='menuitem']")) return;
-                    handlers.onOpen(t);
-                  }}
-                  className="group flex max-w-full cursor-pointer items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-2 text-sm transition-all hover:border-foreground/30 hover:shadow-sm"
-                >
-                  <button
-                    onClick={() => handlers.onToggle(t)}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border hover:border-foreground"
-                    aria-label="Concluir"
-                  />
-                  {handlers.showProjectDot && project && (
-                    <span
-                      aria-hidden
-                      className="h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ background: projectColor(project) }}
-                      title={project.name}
-                    />
-                  )}
-                  <span className="truncate px-0.5">{t.title}</span>
-                  {t.due_date && (
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {relDateLabel(t.due_date)}
-                    </span>
-                  )}
-                  <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {/* Futuras tab */}
-      {activeTab === "futuras" && (
-        <div className="space-y-4">
-          {futureCount === 0 ? (
-            <span className="text-sm text-muted-foreground">
-              Nenhuma tarefa agendada para além desta semana.
-            </span>
-          ) : (
-            groupFutureTasks(futureTasks).map(({ label, isoStart, tasks: wTasks }) => (
-              <div key={isoStart}>
-                <p className="mb-2 px-0.5 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                  {label}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {wTasks.map((t) => (
-                    <WeekChip key={t.id} task={t} {...handlers} />
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
     </section>
   );
 }
@@ -890,6 +735,11 @@ function WeekChip({
             />
           )}
           <span className={`truncate px-1 ${done ? "line-through" : ""}`}>{task.title}</span>
+          {task.due_date && (
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {relDateLabel(task.due_date)}
+            </span>
+          )}
           <TaskActionsMenu
             task={task}
             projectsById={projectsById}
@@ -908,8 +758,6 @@ function DayFocus({
   iso,
   tasks,
   completedOnDay,
-  overdueCount,
-  onSwitchToWeek,
   onNavigate,
   onAdd,
   loading,
@@ -919,8 +767,6 @@ function DayFocus({
   iso: string;
   tasks: Task[];
   completedOnDay: Task[];
-  overdueCount: number;
-  onSwitchToWeek: () => void;
   onNavigate: (iso: string) => void;
   onAdd: (title: string) => void;
   loading: boolean;
@@ -1040,21 +886,6 @@ function DayFocus({
           </>
         )}
       </ul>
-
-      {isToday && overdueCount > 0 && (
-        <div className="border-t border-border/70 px-6 py-3">
-          <button
-            onClick={onSwitchToWeek}
-            className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <span className="font-semibold tabular-nums text-rose-500">
-              {overdueCount}
-            </span>{" "}
-            {overdueCount === 1 ? "tarefa atrasada" : "tarefas atrasadas"} — ver na
-            visão geral →
-          </button>
-        </div>
-      )}
     </section>
   );
 }
@@ -1264,6 +1095,7 @@ function TaskRow({
 }) {
   const done = task.status === "completed";
   const project = task.project_id ? projectsById[task.project_id] : null;
+  const overdue = !done && !!task.due_date && task.due_date < todayIso();
   return (
     <li
       data-task-row
@@ -1323,9 +1155,15 @@ function TaskRow({
             {task.description}
           </p>
         )}
-        <p className="mt-0.5 text-xs text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100">
-          {new Date(task.created_at).toLocaleDateString("pt-BR", { day: "numeric", month: "short" })}
-        </p>
+        {overdue ? (
+          <p className="mt-0.5 text-xs font-medium text-rose-500">
+            {new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short" }).format(parseIsoDate(task.due_date!))}
+          </p>
+        ) : (
+          <p className="mt-0.5 text-xs text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100">
+            {new Date(task.created_at).toLocaleDateString("pt-BR", { day: "numeric", month: "short" })}
+          </p>
+        )}
       </div>
       <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100">
         <TaskActionsMenu
