@@ -100,16 +100,17 @@ function TasksPage() {
   });
 
   const [activeProject, setActiveProject] = useState<ActiveProject>("all");
-  const [view, setView] = useState<"day" | "week">("week");
+  const [view, setView] = useState<"backlog" | "week">("week");
   React.useEffect(() => {
     const saved = localStorage.getItem("tasks:view");
-    if (saved === "day" || saved === "week") setView(saved);
+    // "day" era o nome antigo do modo focado; hoje ele vive dentro de "week".
+    if (saved === "backlog" || saved === "week") setView(saved);
   }, []);
-  const changeView = (v: "day" | "week") => {
+  const changeView = (v: "backlog" | "week") => {
     setView(v);
     localStorage.setItem("tasks:view", v);
   };
-  // Dia selecionado no modo Hoje — permite navegar para ontem, amanhã, etc.
+  // Dia selecionado no card de foco (Hoje) — permite navegar entre dias.
   const [selectedIso, setSelectedIso] = useState(todayIso());
   const todayQuickAddRef = useRef<HTMLInputElement>(null);
   useMobileFab(() => todayQuickAddRef.current?.focus());
@@ -122,14 +123,15 @@ function TasksPage() {
 
   const buckets = useMemo(() => groupByBucket(visibleTasks), [visibleTasks]);
 
-  // "Semana" no topo = só tarefas sem data. Tarefas com data futura (>= hoje+3)
-  // que ainda caem na semana corrente vão para o rodapé "Resto da semana".
+  // Tarefas com data futura (>= hoje+3) que ainda caem na semana corrente vão
+  // para o rodapé "Resto da semana".
   const restIsos = useMemo(() => restOfWeekIsos(), []);
   const restIsoSet = useMemo(() => new Set(restIsos), [restIsos]);
-  // Backlog: tudo que não caiu nos 3 dias em foco — sem data OU data além
-  // desta semana (a "seção de futuras" foi removida; essas tarefas ficam
-  // aqui, com o próprio chip mostrando a data).
-  const weekNoDate = buckets.week;
+  // Backlog = tudo que é pendente e não tem data.
+  const backlogItems = useMemo(
+    () => visibleTasks.filter((t) => t.status === "pending" && !t.due_date),
+    [visibleTasks],
+  );
   const tasksByDate = useMemo(() => {
     const map: Record<string, Task[]> = {};
     for (const t of buckets.week) {
@@ -419,24 +421,24 @@ function TasksPage() {
       <header className="flex items-end justify-between gap-6">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            {view === "day" ? dayLabel(selectedIso) : weekRangeLabel()}
+            {view === "backlog" ? "Sem data definida" : weekRangeLabel()}
           </p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
-            {view === "day" ? "Seu dia." : "Sua semana."}
+            {view === "backlog" ? "Backlog." : "Sua semana."}
           </h1>
         </div>
         <div className="flex items-center gap-4">
           <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted/70 p-0.5">
             <button
-              onClick={() => changeView("day")}
+              onClick={() => changeView("backlog")}
               className={cn(
                 "rounded-md px-3 py-1.5 text-sm transition-all",
-                view === "day"
+                view === "backlog"
                   ? "bg-card font-medium text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              Hoje
+              Backlog
             </button>
             <button
               onClick={() => changeView("week")}
@@ -474,15 +476,15 @@ function TasksPage() {
         counts={counts}
       />
 
-      {/* Modo Hoje — visão focada de um dia só, inspirada em lista de papel */}
-      {view === "day" && (
-        <DayFocus
-          iso={selectedIso}
-          tasks={dayPending}
-          completedOnDay={completedOnDay}
-          onNavigate={setSelectedIso}
+      {/* Modo Backlog — itens sem data, no formato do card de foco */}
+      {view === "backlog" && (
+        <BacklogCard
+          tasks={backlogItems}
           onAdd={(title) =>
-            create.mutate({ title, due_date: selectedIso, project_id: newTaskProjectId })
+            create.mutate(
+              { title, due_date: null, project_id: newTaskProjectId },
+              { onSuccess: () => toast.success("Guardada sem data") },
+            )
           }
           loading={isLoading}
           quickAddRef={todayQuickAddRef}
@@ -492,45 +494,30 @@ function TasksPage() {
 
       {view === "week" && (
       <>
-      {/* "Semana" — horizontal strip on top: macro plan, distinct from daily focus */}
-      <WeekStrip
-        tasks={weekNoDate}
+      {/* Foco do dia no topo — card "Hoje" com navegação entre dias */}
+      <DayFocus
+        iso={selectedIso}
+        tasks={dayPending}
+        completedOnDay={completedOnDay}
+        onNavigate={setSelectedIso}
         onAdd={(title) =>
-          create.mutate(
-            { title, due_date: null, project_id: newTaskProjectId },
-            { onSuccess: () => toast.success("Guardada sem data") },
-          )
+          create.mutate({ title, due_date: selectedIso, project_id: newTaskProjectId })
         }
         loading={isLoading}
+        quickAddRef={todayQuickAddRef}
         {...columnHandlers}
       />
 
-      {/* Day columns — desktop: asymmetric grid (Today dominant). Mobile: snap-scroll carousel. */}
+      {/* Amanhã / Depois — o dia de hoje já está no card de foco acima */}
       <div
-        className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:snap-none md:gap-5 md:overflow-visible md:px-0 md:pb-0 md:grid-cols-[1.6fr_1fr_1fr]"
+        className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:snap-none md:gap-5 md:overflow-visible md:px-0 md:pb-0 md:grid-cols-2"
       >
-        <div className="w-[88vw] shrink-0 snap-start md:w-auto">
-        <DayColumn
-          dayNumber={dayNumber(todayIso())}
-          weekday={weekdayLabel(todayIso())}
-          label="Hoje"
-          accent
-          tasks={buckets.today}
-          bucket="today"
-          onAdd={(title) =>
-            create.mutate({ title, due_date: todayIso(), project_id: newTaskProjectId })
-          }
-          loading={isLoading}
-          quickAddRef={todayQuickAddRef}
-          {...columnHandlers}
-          emptyText="Dia limpo. Capriche em uma coisa só."
-        />
-        </div>
         <div className="w-[88vw] shrink-0 snap-start md:w-auto">
         <DayColumn
           dayNumber={dayNumber(tomorrowIso())}
           weekday={weekdayLabel(tomorrowIso())}
           label="Amanhã"
+          accent
           tasks={buckets.tomorrow}
           bucket="tomorrow"
           onAdd={(title) =>
@@ -546,6 +533,7 @@ function TasksPage() {
           dayNumber={dayNumber(dayAfterTomorrowIso())}
           weekday={weekdayLabel(dayAfterTomorrowIso())}
           label="Depois"
+          accent
           tasks={buckets.later}
           bucket="later"
           onAdd={(title) =>
@@ -636,28 +624,22 @@ interface ColumnHandlers {
   showProjectDot: boolean;
 }
 
-function relDateLabel(due: string): string {
-  const today = todayIso();
-  if (due === today) return "· hoje";
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  if (due === toIsoDate(d)) return "· ontem";
-  const [, m, day] = due.split("-");
-  return `· ${day}/${m}`;
-}
+/* ---------------------- Backlog card (itens sem data) ---------------------- */
 
-function WeekStrip({
+function BacklogCard({
   tasks,
   onAdd,
   loading,
+  quickAddRef,
   ...handlers
 }: ColumnHandlers & {
   tasks: Task[];
   onAdd: (title: string) => void;
   loading: boolean;
+  quickAddRef?: React.RefObject<HTMLInputElement | null>;
 }) {
   const [drag, setDrag] = useState(false);
-  const backlogTasks = tasks.filter((t) => t.status === "pending");
+  const pending = tasks.filter((t) => t.status === "pending");
 
   return (
     <section
@@ -665,90 +647,62 @@ function WeekStrip({
         e.preventDefault();
         setDrag(true);
       }}
-      onDragLeave={() => setDrag(false)}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrag(false);
+      }}
       onDrop={(e) => {
         e.preventDefault();
         setDrag(false);
         const id = e.dataTransfer.getData("text/task-id");
-        if (id) handlers.onMove(id, "week");
+        if (id) handlers.onMove(id, "week"); // solta no backlog = remove a data
       }}
-      className={`rounded-2xl border bg-card/60 p-5 transition-colors ${
+      className={`mx-auto flex w-full max-w-2xl flex-col rounded-2xl border bg-card transition-colors ${
         drag ? "border-foreground/40 bg-secondary/60" : "border-border"
       }`}
     >
-      <QuickAdd placeholder="Anotar uma ideia, meta ou recado…" onAdd={onAdd} />
-      <div className="mt-4 flex flex-wrap gap-2">
-        {loading && <Pulse size={10} className="ml-1" />}
-        {!loading && backlogTasks.length === 0 && (
-          <span className="text-sm text-muted-foreground">
-            Tudo já tem dia. Use aqui para guardar o que vem sem hora.
-          </span>
-        )}
-        {backlogTasks.map((t) => (
-          <WeekChip key={t.id} task={t} {...handlers} />
-        ))}
-      </div>
-    </section>
-  );
-}
+      <header className="flex items-center justify-between gap-4 px-6 pt-6">
+        <div className="flex flex-col">
+          <span className="text-sm font-semibold text-foreground">Backlog</span>
+          <span className="text-xs text-muted-foreground">o que vem sem hora</span>
+        </div>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {pending.length}
+        </span>
+      </header>
 
-function WeekChip({
-  task,
-  onToggle,
-  onOpen,
-  projectsById,
-  showProjectDot,
-  ...handlers
-}: ColumnHandlers & { task: Task }) {
-  const done = task.status === "completed";
-  const project = task.project_id ? projectsById[task.project_id] : null;
-  return (
-    <div
-          draggable
-          onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
-          onClick={(e) => {
-            const target = e.target as HTMLElement;
-            if (target.closest("button, a, [role='menuitem']")) return;
-            onOpen(task);
-          }}
-          className={`group flex max-w-full cursor-pointer items-center gap-2 rounded-full border border-border bg-card pl-1 pr-1 py-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm ${
-            done ? "opacity-50" : ""
-          }`}
-        >
-          <button
-            onClick={() => onToggle(task)}
-            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-              done
-                ? "border-foreground bg-foreground text-background"
-                : "border-border hover:border-foreground"
-            }`}
-            aria-label={done ? "Reabrir" : "Concluir"}
-          >
-            {done && <Check className="h-3 w-3" />}
-          </button>
-          {showProjectDot && project && (
-            <span
-              aria-hidden
-              className="h-1.5 w-1.5 shrink-0 rounded-full"
-              style={{ background: projectColor(project) }}
-              title={project.name}
+      <div className="px-6 pt-4">
+        <QuickAdd
+          placeholder="Anotar uma ideia, meta ou recado…"
+          onAdd={onAdd}
+          inputRef={quickAddRef}
+        />
+      </div>
+
+      <ul className="flex-1 px-3 pb-4 pt-2">
+        {loading && (
+          <li className="flex items-center justify-center px-3 py-8">
+            <Pulse size={10} />
+          </li>
+        )}
+        {!loading && pending.length === 0 && (
+          <li className="px-3 py-10 text-sm text-muted-foreground">
+            Tudo já tem dia. Use aqui para guardar o que vem sem hora.
+          </li>
+        )}
+        {pending.map((t) =>
+          handlers.editingId === t.id ? (
+            <EditRow
+              key={t.id}
+              task={t}
+              onSave={(title, desc) => handlers.onSaveEdit(t.id, title, desc)}
+              onCancel={handlers.onCancelEdit}
             />
-          )}
-          <span className={`truncate px-1 ${done ? "line-through" : ""}`}>{task.title}</span>
-          {task.due_date && (
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {relDateLabel(task.due_date)}
-            </span>
-          )}
-          <TaskActionsMenu
-            task={task}
-            projectsById={projectsById}
-            {...handlers}
-            onOpen={onOpen}
-            onToggle={onToggle}
-            showProjectDot={showProjectDot}
-          />
-    </div>
+          ) : (
+            <TaskRow key={t.id} task={t} accent {...handlers} />
+          ),
+        )}
+      </ul>
+    </section>
   );
 }
 
@@ -1462,14 +1416,6 @@ function weekdayLabel(iso: string): string {
   return new Intl.DateTimeFormat("pt-BR", { weekday: "long" })
     .format(new Date(y, m - 1, d))
     .toLowerCase();
-}
-
-function dayLabel(iso: string): string {
-  return new Intl.DateTimeFormat("pt-BR", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-  }).format(parseIsoDate(iso));
 }
 
 function addDaysIso(iso: string, delta: number): string {
