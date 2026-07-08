@@ -23,8 +23,6 @@ import {
   toIsoDate,
   todayIso,
   tomorrowIso,
-  dayAfterTomorrowIso,
-  restOfWeekIsos,
 } from "@/modules/tasks/buckets";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -123,24 +121,36 @@ function TasksPage() {
 
   const buckets = useMemo(() => groupByBucket(visibleTasks), [visibleTasks]);
 
-  // Tarefas com data futura (>= hoje+3) que ainda caem na semana corrente vão
-  // para o rodapé "Resto da semana".
-  const restIsos = useMemo(() => restOfWeekIsos(), []);
-  const restIsoSet = useMemo(() => new Set(restIsos), [restIsos]);
+  // Bento: linha 2 mostra os 3 dias após amanhã (hoje+2 … hoje+4).
+  const next3Isos = useMemo(
+    () => [2, 3, 4].map((n) => addDaysIso(todayIso(), n)),
+    [],
+  );
   // Backlog = tudo que é pendente e não tem data.
   const backlogItems = useMemo(
     () => visibleTasks.filter((t) => t.status === "pending" && !t.due_date),
     [visibleTasks],
   );
   const tasksByDate = useMemo(() => {
+    const set = new Set(next3Isos);
     const map: Record<string, Task[]> = {};
-    for (const t of buckets.week) {
-      if (t.due_date && restIsoSet.has(t.due_date)) {
+    for (const t of visibleTasks) {
+      if (t.status === "pending" && t.due_date && set.has(t.due_date)) {
         (map[t.due_date] ??= []).push(t);
       }
     }
     return map;
-  }, [buckets.week, restIsoSet]);
+  }, [visibleTasks, next3Isos]);
+  // Tudo que está marcado para depois desses 3 dias, em ordem cronológica.
+  const laterTasks = useMemo(
+    () =>
+      visibleTasks
+        .filter(
+          (t) => t.status === "pending" && !!t.due_date && t.due_date > next3Isos[2],
+        )
+        .sort((a, b) => a.due_date!.localeCompare(b.due_date!)),
+    [visibleTasks, next3Isos],
+  );
 
   // Counts per project (pending only — that's what matters for scanning)
   const counts = useMemo(() => {
@@ -494,30 +504,24 @@ function TasksPage() {
 
       {view === "week" && (
       <>
-      {/* Foco do dia no topo — card "Hoje" com navegação entre dias */}
-      <DayFocus
-        iso={selectedIso}
-        tasks={dayPending}
-        completedOnDay={completedOnDay}
-        onNavigate={setSelectedIso}
-        onAdd={(title) =>
-          create.mutate({ title, due_date: selectedIso, project_id: newTaskProjectId })
-        }
-        loading={isLoading}
-        quickAddRef={todayQuickAddRef}
-        {...columnHandlers}
-      />
-
-      {/* Amanhã / Depois — o dia de hoje já está no card de foco acima */}
-      <div
-        className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:snap-none md:gap-5 md:overflow-visible md:px-0 md:pb-0 md:grid-cols-2"
-      >
-        <div className="w-[88vw] shrink-0 snap-start md:w-auto">
+      {/* Bento linha 1 — Hoje dominante + Amanhã estreito */}
+      <div className="grid items-stretch gap-5 md:grid-cols-[1.8fr_1fr]">
+        <DayFocus
+          iso={selectedIso}
+          tasks={dayPending}
+          completedOnDay={completedOnDay}
+          onNavigate={setSelectedIso}
+          onAdd={(title) =>
+            create.mutate({ title, due_date: selectedIso, project_id: newTaskProjectId })
+          }
+          loading={isLoading}
+          quickAddRef={todayQuickAddRef}
+          {...columnHandlers}
+        />
         <DayColumn
           dayNumber={dayNumber(tomorrowIso())}
           weekday={weekdayLabel(tomorrowIso())}
           label="Amanhã"
-          accent
           tasks={buckets.tomorrow}
           bucket="tomorrow"
           onAdd={(title) =>
@@ -527,52 +531,36 @@ function TasksPage() {
           {...columnHandlers}
           emptyText="Nada agendado."
         />
-        </div>
-        <div className="w-[88vw] shrink-0 snap-start md:w-auto">
-        <DayColumn
-          dayNumber={dayNumber(dayAfterTomorrowIso())}
-          weekday={weekdayLabel(dayAfterTomorrowIso())}
-          label="Depois"
-          accent
-          tasks={buckets.later}
-          bucket="later"
-          onAdd={(title) =>
-            create.mutate({ title, due_date: bucketDueDate("later"), project_id: newTaskProjectId })
-          }
-          loading={isLoading}
-          {...columnHandlers}
-          emptyText="Sem compromissos."
-        />
-        </div>
       </div>
 
-      {/* Resto da semana — hierarquia menor: linha separadora + grade densa */}
-      {restIsos.length > 0 && (
+      {/* Bento linha 2 — os 3 dias seguintes */}
+      <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:snap-none md:grid-cols-3 md:overflow-visible md:px-0 md:pb-0">
+        {next3Isos.map((iso) => (
+          <MiniDayCard
+            key={iso}
+            iso={iso}
+            tasks={tasksByDate[iso] ?? []}
+            onAdd={(title: string) =>
+              create.mutate({ title, due_date: iso, project_id: newTaskProjectId })
+            }
+            {...columnHandlers}
+          />
+        ))}
+      </div>
+
+      {/* Linha 3 — tudo que está marcado para depois desses dias */}
+      {laterTasks.length > 0 && (
         <section className="pt-2">
-          <div className="flex items-center gap-3 pb-3">
+          <div className="flex items-center gap-3 pb-4">
             <div className="h-px flex-1 bg-border/70" />
             <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-              Resto da semana
+              Mais adiante
             </span>
             <div className="h-px flex-1 bg-border/70" />
           </div>
-          <div
-            className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:snap-none md:overflow-visible md:px-0 md:pb-0"
-            style={{
-              ["--rest-cols" as string]: restIsos.length,
-              gridTemplateColumns: `repeat(${restIsos.length}, minmax(0, 1fr))`,
-            }}
-          >
-            {restIsos.map((iso) => (
-              <MiniDayCard
-                key={iso}
-                iso={iso}
-                tasks={tasksByDate[iso] ?? []}
-                onAdd={(title: string) =>
-                  create.mutate({ title, due_date: iso, project_id: newTaskProjectId })
-                }
-                {...columnHandlers}
-              />
+          <div className="flex flex-wrap gap-2">
+            {laterTasks.map((t) => (
+              <LaterChip key={t.id} task={t} {...columnHandlers} />
             ))}
           </div>
         </section>
@@ -745,7 +733,7 @@ function DayFocus({
         const id = e.dataTransfer.getData("text/task-id");
         if (id) handlers.onSetDate(id, iso);
       }}
-      className={`mx-auto flex w-full max-w-2xl flex-col rounded-2xl border bg-card transition-colors ${
+      className={`flex h-full min-h-[420px] w-full flex-col rounded-2xl border bg-card transition-colors ${
         drag ? "border-foreground/40 bg-secondary/60" : "border-border"
       }`}
     >
@@ -1130,6 +1118,58 @@ function TaskRow({
         />
       </div>
     </li>
+  );
+}
+
+/* ---------------------- Later chip (mais adiante) ---------------------- */
+
+function LaterChip({
+  task,
+  onToggle,
+  onOpen,
+  projectsById,
+  showProjectDot,
+  ...handlers
+}: ColumnHandlers & { task: Task }) {
+  const project = task.project_id ? projectsById[task.project_id] : null;
+  const [, m, d] = task.due_date!.split("-");
+  return (
+    <div
+      draggable
+      onDragStart={(e) => e.dataTransfer.setData("text/task-id", task.id)}
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest("button, a, [role='menuitem']")) return;
+        onOpen(task);
+      }}
+      className="group flex max-w-full cursor-pointer items-center gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-1 text-sm transition-all hover:border-foreground/30 hover:shadow-sm"
+    >
+      <button
+        onClick={() => onToggle(task)}
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border hover:border-foreground"
+        aria-label="Concluir"
+      />
+      {showProjectDot && project && (
+        <span
+          aria-hidden
+          className="h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ background: projectColor(project) }}
+          title={project.name}
+        />
+      )}
+      <span className="truncate px-0.5">{task.title}</span>
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+        {d}/{m}
+      </span>
+      <TaskActionsMenu
+        task={task}
+        projectsById={projectsById}
+        {...handlers}
+        onOpen={onOpen}
+        onToggle={onToggle}
+        showProjectDot={showProjectDot}
+      />
+    </div>
   );
 }
 
