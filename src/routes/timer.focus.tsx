@@ -54,8 +54,8 @@ function FocusPage() {
   const [active, setActive] = useState<ActiveSession | null>(null);
   const [now, setNow] = useState(Date.now());
   const [night, setNight] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("focus-night") === "1";
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem("focus-night") !== "0";
   });
   const completedRef = useRef(false);
   const originalTitleRef = useRef<string>("");
