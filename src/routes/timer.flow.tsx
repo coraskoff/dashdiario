@@ -108,6 +108,14 @@ function FlowCompanion() {
     if (!session) return;
     let alive = true;
     const check = async () => {
+      // Pausado = pediu uma pausa explícita — não vigia nem cutuca.
+      if (sessionRef.current?.pausedAt) {
+        if (prevState.current !== "focused") {
+          prevState.current = "focused";
+          setState("focused");
+        }
+        return;
+      }
       const proc = await pollActive();
       if (!alive) return;
       if (proc === null) return; // sem info, mantém
@@ -221,7 +229,7 @@ function FlowCompanion() {
   if (!session) return null;
 
   const paused = !!session.pausedAt;
-  const nudging = state === "nudge";
+  const nudging = state === "nudge" && !paused;
   const timeLabel = remaining !== null ? fmt(remaining) : fmt(elapsed);
   const progress =
     session.plannedSeconds != null && session.plannedSeconds > 0
