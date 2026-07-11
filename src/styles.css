@@ -210,3 +210,110 @@
     animation: pulse-ring 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
   }
 }
+
+/* ---------------- Flip clock (modo Relógio do Foco, estilo Fliqlo) ---------------- */
+.flip-clock {
+  --h: clamp(150px, 22vw, 260px);
+  display: flex;
+  gap: calc(var(--h) * 0.09);
+  align-items: center;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+}
+.flip-card {
+  position: relative;
+  width: calc(var(--h) * 0.92);
+  height: var(--h);
+  border-radius: calc(var(--h) * 0.1);
+  background: #0e0e0e;
+  perspective: 500px;
+}
+.flip-half {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+  overflow: hidden;
+  background: #0e0e0e;
+}
+.flip-top {
+  top: 0;
+  border-radius: calc(var(--h) * 0.1) calc(var(--h) * 0.1) 0 0;
+  border-bottom: 1px solid #000;
+}
+.flip-bottom {
+  bottom: 0;
+  border-radius: 0 0 calc(var(--h) * 0.1) calc(var(--h) * 0.1);
+  border-top: 1px solid #000;
+}
+.flip-flap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+  overflow: hidden;
+  background: #0e0e0e;
+  backface-visibility: hidden;
+  z-index: 2;
+}
+.flip-flap-top {
+  top: 0;
+  transform-origin: bottom;
+  border-radius: calc(var(--h) * 0.1) calc(var(--h) * 0.1) 0 0;
+  border-bottom: 1px solid #000;
+}
+.flip-flap-bottom {
+  bottom: 0;
+  transform-origin: top;
+  transform: rotateX(90deg);
+  border-radius: 0 0 calc(var(--h) * 0.1) calc(var(--h) * 0.1);
+  border-top: 1px solid #000;
+}
+.flip-flap-top.anim {
+  animation: flip-clock-top 0.28s ease-in forwards;
+}
+.flip-flap-bottom.anim {
+  animation: flip-clock-bot 0.28s ease-out 0.28s forwards;
+}
+.flip-card span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--h);
+  line-height: var(--h);
+  text-align: center;
+  font-size: calc(var(--h) * 0.8);
+  font-weight: 800;
+  color: #b6b6b6;
+  letter-spacing: -0.03em;
+}
+.flip-top span,
+.flip-flap-top span {
+  top: 0;
+}
+.flip-bottom span,
+.flip-flap-bottom span {
+  bottom: 0;
+}
+.flip-ampm {
+  position: absolute;
+  left: 9% !important;
+  right: auto !important;
+  bottom: 6%;
+  top: auto !important;
+  z-index: 3;
+  height: auto !important;
+  line-height: 1 !important;
+  text-align: left !important;
+  font-size: calc(var(--h) * 0.12) !important;
+  font-weight: 800;
+  color: #b6b6b6;
+  letter-spacing: 0.06em;
+}
+@keyframes flip-clock-top {
+  from { transform: rotateX(0); }
+  to { transform: rotateX(-90deg); }
+}
+@keyframes flip-clock-bot {
+  from { transform: rotateX(90deg); }
+  to { transform: rotateX(0); }
+}
