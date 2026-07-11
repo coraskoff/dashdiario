@@ -1,63 +1,87 @@
-import { supabase } from "@/integrations/supabase/client";
+import { all, one, run, uid, nowIso } from "@/lib/db";
 import type { Note, NoteFolder } from "./types";
 
 export async function fetchFolders(): Promise<NoteFolder[]> {
-  const { data, error } = await supabase
-    .from("note_folders")
-    .select("id, name, created_at, updated_at")
-    .order("name");
-  if (error) throw error;
-  return (data ?? []) as NoteFolder[];
+  return all<NoteFolder>(
+    `SELECT id, name, created_at, updated_at FROM note_folders ORDER BY name`,
+  );
 }
 
 export async function fetchNotes(): Promise<Note[]> {
-  const { data, error } = await supabase
-    .from("notes")
-    .select("id, folder_id, title, content, created_at, updated_at")
-    .order("updated_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as Note[];
+  return all<Note>(
+    `SELECT id, folder_id, title, content, created_at, updated_at
+     FROM notes ORDER BY updated_at DESC`,
+  );
 }
 
 export async function createFolder(name: string): Promise<NoteFolder> {
-  const { data, error } = await supabase
-    .from("note_folders")
-    .insert({ name })
-    .select("id, name, created_at, updated_at")
-    .single();
-  if (error) throw error;
-  return data as NoteFolder;
+  const id = uid();
+  const now = nowIso();
+  await run(
+    `INSERT INTO note_folders (id, name, created_at, updated_at) VALUES ($1, $2, $3, $4)`,
+    [id, name, now, now],
+  );
+  return { id, name, created_at: now, updated_at: now };
 }
 
 export async function renameFolder(id: string, name: string): Promise<void> {
-  const { error } = await supabase.from("note_folders").update({ name }).eq("id", id);
-  if (error) throw error;
+  await run(`UPDATE note_folders SET name = $1, updated_at = $2 WHERE id = $3`, [
+    name,
+    nowIso(),
+    id,
+  ]);
 }
 
 export async function deleteFolder(id: string): Promise<void> {
-  const { error } = await supabase.from("note_folders").delete().eq("id", id);
-  if (error) throw error;
+  // As notas da pasta não somem — apenas ficam sem pasta.
+  await run(`UPDATE notes SET folder_id = NULL WHERE folder_id = $1`, [id]);
+  await run(`DELETE FROM note_folders WHERE id = $1`, [id]);
 }
 
 export async function createNote(folderId: string | null): Promise<Note> {
-  const { data, error } = await supabase
-    .from("notes")
-    .insert({ folder_id: folderId, title: "", content: "" })
-    .select("id, folder_id, title, content, created_at, updated_at")
-    .single();
-  if (error) throw error;
-  return data as Note;
+  const id = uid();
+  const now = nowIso();
+  await run(
+    `INSERT INTO notes (id, folder_id, title, content, created_at, updated_at)
+     VALUES ($1, $2, '', '', $3, $4)`,
+    [id, folderId, now, now],
+  );
+  return { id, folder_id: folderId, title: "", content: "", created_at: now, updated_at: now };
 }
 
 export async function updateNote(
   id: string,
   patch: Partial<Pick<Note, "title" | "content" | "folder_id">>,
 ): Promise<void> {
-  const { error } = await supabase.from("notes").update(patch).eq("id", id);
-  if (error) throw error;
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  let i = 1;
+  if (patch.title !== undefined) {
+    sets.push(`title = $${i++}`);
+    vals.push(patch.title);
+  }
+  if (patch.content !== undefined) {
+    sets.push(`content = $${i++}`);
+    vals.push(patch.content);
+  }
+  if (patch.folder_id !== undefined) {
+    sets.push(`folder_id = $${i++}`);
+    vals.push(patch.folder_id);
+  }
+  sets.push(`updated_at = $${i++}`);
+  vals.push(nowIso());
+  vals.push(id);
+  await run(`UPDATE notes SET ${sets.join(", ")} WHERE id = $${i}`, vals);
 }
 
 export async function deleteNote(id: string): Promise<void> {
-  const { error } = await supabase.from("notes").delete().eq("id", id);
-  if (error) throw error;
+  await run(`DELETE FROM notes WHERE id = $1`, [id]);
+}
+
+// Reexport para telas que só precisam de leitura pontual.
+export async function getNote(id: string): Promise<Note | null> {
+  return one<Note>(
+    `SELECT id, folder_id, title, content, created_at, updated_at FROM notes WHERE id = $1`,
+    [id],
+  );
 }

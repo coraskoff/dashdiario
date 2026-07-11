@@ -1,31 +1,30 @@
-import { supabase } from "@/integrations/supabase/client";
+import { all, run, uid, nowIso } from "@/lib/db";
 import type { Project } from "./types";
 
 export async function fetchProjects(): Promise<Project[]> {
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as Project[];
+  return all<Project>(`SELECT * FROM projects ORDER BY created_at ASC`);
 }
 
 export async function createProject(name: string): Promise<Project> {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Informe um nome para o projeto.");
   if (trimmed.length > 60) throw new Error("Nome muito longo (máx. 60).");
-  const { data, error } = await supabase
-    .from("projects")
-    .insert({ name: trimmed })
-    .select()
-    .single();
-  if (error) throw error;
-  return data as Project;
+  const id = uid();
+  const now = nowIso();
+  await run(
+    `INSERT INTO projects (id, name, color, created_at, updated_at)
+     VALUES ($1, $2, NULL, $3, $4)`,
+    [id, trimmed, now, now],
+  );
+  return { id, name: trimmed, color: null, created_at: now, updated_at: now };
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  const { error } = await supabase.from("projects").delete().eq("id", id);
-  if (error) throw error;
+  // Sem FK ativa no SQLite local — soltamos as referências manualmente
+  // pra não deixar tarefas/metas apontando pra um projeto que não existe mais.
+  await run(`UPDATE tasks SET project_id = NULL WHERE project_id = $1`, [id]);
+  await run(`DELETE FROM timer_project_goals WHERE project_id = $1`, [id]);
+  await run(`DELETE FROM projects WHERE id = $1`, [id]);
 }
 
 /** Deterministic color per project id — semantic anchor for scanning. */
