@@ -88,14 +88,14 @@ export function StartFocusDialog({
             onClick={() => setMode("clock")}
             icon={<Clock className="h-5 w-5" strokeWidth={1.75} />}
             title="Relógio"
-            subtitle="Tempo livre, conta pra cima."
+            subtitle="Papel de parede para focar."
           />
           <ModeCard
             active={mode === "session"}
             onClick={() => setMode("session")}
             icon={<Timer className="h-5 w-5" strokeWidth={1.75} />}
             title="Sessão"
-            subtitle="Contagem regressiva."
+            subtitle="Defina um período de foco."
           />
         </div>
 
