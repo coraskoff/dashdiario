@@ -833,7 +833,6 @@ function QuickActionsCard() {
     <section className="flex h-full flex-col rounded-2xl border border-border bg-card md:min-h-[420px]">
       <header className="flex flex-col px-6 pt-6">
         <span className="text-sm font-semibold text-foreground">Atalhos</span>
-        <span className="text-xs text-muted-foreground">começar sem fricção</span>
       </header>
       <div className="flex flex-1 flex-col gap-3 p-5 pt-4">
         <button
@@ -841,12 +840,7 @@ function QuickActionsCard() {
           className="group flex min-h-[120px] flex-1 flex-col justify-between rounded-xl border border-border/70 bg-secondary/30 p-5 text-left transition-colors hover:border-foreground/30 hover:bg-secondary/60"
         >
           <TimerIcon className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-foreground" />
-          <div>
-            <span className="text-base font-semibold text-foreground">Iniciar foco</span>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              uma sessão de trabalho cronometrada
-            </p>
-          </div>
+          <span className="text-base font-semibold text-foreground">Iniciar foco</span>
         </button>
         <button
           onClick={() => newNote.mutate()}
@@ -854,12 +848,7 @@ function QuickActionsCard() {
           className="group flex min-h-[120px] flex-1 flex-col justify-between rounded-xl border border-border/70 bg-secondary/30 p-5 text-left transition-colors hover:border-foreground/30 hover:bg-secondary/60 disabled:opacity-60"
         >
           <NotebookPen className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-foreground" />
-          <div>
-            <span className="text-base font-semibold text-foreground">Nova nota</span>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              abre uma página em branco pra escrever
-            </p>
-          </div>
+          <span className="text-base font-semibold text-foreground">Nova nota</span>
         </button>
       </div>
       <StartFocusDialog open={focusOpen} onOpenChange={setFocusOpen} />

@@ -54,11 +54,6 @@ export function CompletedSheet({
           title="Concluídas"
         >
           <CheckCheck className="h-4 w-4" />
-          {total > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-foreground px-1 text-[10px] font-medium tabular-nums text-background">
-              {total > 99 ? "99+" : total}
-            </span>
-          )}
         </Button>
       </SheetTrigger>
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
