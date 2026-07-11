@@ -225,9 +225,9 @@ function FocusPage() {
     );
   }
 
-  const bg = night ? "#11140f" : "#ffffff";
-  const fg = night ? "#9ca38f" : "#6b6b6b";
-  const subtle = night ? "#5a6150" : "#a8a8a8";
+  const bg = night ? "#000" : "#ffffff";
+  const fg = night ? "#b6b6b6" : "#2b2b2b";
+  const subtle = night ? "#5a5a5a" : "#a8a8a8";
 
   const toggleNight = () => {
     const next = !night;
