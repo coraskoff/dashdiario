@@ -54,8 +54,8 @@ function FocusPage() {
   const [active, setActive] = useState<ActiveSession | null>(null);
   const [now, setNow] = useState(Date.now());
   const [night, setNight] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("focus-night") === "1";
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem("focus-night") !== "0";
   });
   const completedRef = useRef(false);
   const originalTitleRef = useRef<string>("");
@@ -225,9 +225,9 @@ function FocusPage() {
     );
   }
 
-  const bg = night ? "#11140f" : "#ffffff";
-  const fg = night ? "#9ca38f" : "#6b6b6b";
-  const subtle = night ? "#5a6150" : "#a8a8a8";
+  const bg = night ? "#000" : "#ffffff";
+  const fg = night ? "#b6b6b6" : "#2b2b2b";
+  const subtle = night ? "#5a5a5a" : "#a8a8a8";
 
   const toggleNight = () => {
     const next = !night;
@@ -254,16 +254,16 @@ function FocusPage() {
         onClick={togglePause}
         className="cursor-pointer select-none tabular-nums leading-none px-6 text-center"
         style={{
-          fontFamily: '"Crimson Pro", serif',
-          fontWeight: 300,
+          fontFamily: '"Helvetica Neue", Arial, sans-serif',
+          fontWeight: 800,
           fontSize:
             remaining !== null
               ? (active.plannedSeconds && active.plannedSeconds >= 3600
-                  ? "clamp(4rem, 17vw, 18rem)"
-                  : "clamp(6rem, 24vw, 22rem)")
+                  ? "clamp(4rem, 16vw, 17rem)"
+                  : "clamp(5.5rem, 22vw, 20rem)")
               : (elapsed >= 3600
-                  ? "clamp(4rem, 17vw, 18rem)"
-                  : "clamp(6rem, 24vw, 22rem)"),
+                  ? "clamp(4rem, 16vw, 17rem)"
+                  : "clamp(5.5rem, 22vw, 20rem)"),
           letterSpacing: "-0.04em",
           color: fg,
           opacity: active.pausedAt ? 0.45 : 1,
