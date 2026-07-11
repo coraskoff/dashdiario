@@ -84,9 +84,20 @@ function FlowCompanion() {
     if (!s.pausedAt) audio.start();
 
     enterCompanion();
+
+    // A companheira é uma janela minúscula sem bordas — qualquer overflow
+    // (mesmo de 1px por arredondamento) vira barra de rolagem visível.
+    const html = document.documentElement;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    html.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+
     return () => {
       audio.dispose();
       exitCompanion();
+      html.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -238,7 +249,7 @@ function FlowCompanion() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex flex-col justify-center px-4 py-3 select-none"
+      className="fixed inset-0 z-[100] flex flex-col justify-center overflow-hidden px-4 py-3 select-none"
       style={{
         backgroundColor: nudging ? "#161410" : "#131313",
         color: "#eaeaea",
@@ -253,19 +264,21 @@ function FlowCompanion() {
               className="text-[10px] uppercase tracking-[0.16em]"
               style={{ color: "#b89a5e" }}
             >
-              Volte com calma
+              Está distraído?
             </span>
           </div>
-          <p className="mt-1.5 truncate text-sm font-medium" style={{ color: "#fbf4e6" }}>
-            {session.intention || "Foco"}
-          </p>
+          {session.intention && (
+            <p className="mt-1.5 truncate text-sm font-medium" style={{ color: "#fbf4e6" }}>
+              {session.intention}
+            </p>
+          )}
           <div className="mt-2.5 flex gap-2">
             <button
               onClick={backToFocus}
               className="flex-1 rounded-lg py-1.5 text-xs font-medium"
               style={{ background: "#e2c891", color: "#1c1a15" }}
             >
-              Voltar ao foco
+              Estou focado
             </button>
             {session.plannedSeconds != null && (
               <button
