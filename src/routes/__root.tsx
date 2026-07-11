@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
-import { CheckSquare, Wallet, BookOpen, Plus, Timer } from "lucide-react";
+import { CheckSquare, Wallet, BookOpen, Plus, Timer, HeartPulse } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 interface MobileFabCtx {
@@ -100,6 +100,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
               <NavLink to="/finance">Finanças</NavLink>
               <NavLink to="/notes">Notas</NavLink>
               <NavLink to="/timer">Foco</NavLink>
+              <NavLink to="/saude">Saúde</NavLink>
             </nav>
           </div>
         </header>
@@ -135,6 +136,7 @@ const NAV_ITEMS = [
   { to: "/finance", label: "Finanças", icon: Wallet },
   { to: "/notes", label: "Notas", icon: BookOpen },
   { to: "/timer", label: "Foco", icon: Timer },
+  { to: "/saude", label: "Saúde", icon: HeartPulse },
 ] as const;
 
 function MobileNav() {
