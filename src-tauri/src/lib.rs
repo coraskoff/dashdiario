@@ -1,5 +1,26 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+#[derive(serde::Serialize)]
+struct ActiveApp {
+    process: String,
+    app: String,
+    title: String,
+}
+
+/// Retorna o app/janela em primeiro plano no sistema (foreground).
+/// Usado pelo modo Fluxo pra saber se você saiu dos apps de trabalho.
+#[tauri::command]
+fn active_app() -> Option<ActiveApp> {
+    match active_win_pos_rs::get_active_window() {
+        Ok(w) => Some(ActiveApp {
+            process: w.process_name.to_lowercase(),
+            app: w.app_name,
+            title: w.title,
+        }),
+        Err(_) => None,
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![Migration {
@@ -20,6 +41,7 @@ pub fn run() {
                 .add_migrations("sqlite:dash.db", migrations)
                 .build(),
         )
+        .invoke_handler(tauri::generate_handler![active_app])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

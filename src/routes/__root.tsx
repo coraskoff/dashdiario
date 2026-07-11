@@ -74,7 +74,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     setFabActionState(action ? () => action : null);
   }, []);
   const location = useLocation();
-  const isFocus = location.pathname.startsWith("/timer/focus");
+  const isFocus =
+    location.pathname.startsWith("/timer/focus") ||
+    location.pathname.startsWith("/timer/flow");
 
   if (isFocus) {
     return (
