@@ -106,11 +106,6 @@ export function CompletedSheet({
                                 {t.title}
                               </p>
                             </div>
-                            {t.completed_at && (
-                              <p className="mt-0.5 text-[10px] tabular-nums text-muted-foreground/60">
-                                {formatTime(t.completed_at)}
-                              </p>
-                            )}
                           </div>
                           <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                             <button
@@ -159,12 +154,4 @@ function formatGroupDate(iso: string): string {
     day: "2-digit",
     month: "short",
   }).format(new Date(y, m - 1, d));
-}
-
-function formatTime(stamp: string): string {
-  const d = new Date(stamp);
-  return new Intl.DateTimeFormat("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
 }
