@@ -254,16 +254,16 @@ function FocusPage() {
         onClick={togglePause}
         className="cursor-pointer select-none tabular-nums leading-none px-6 text-center"
         style={{
-          fontFamily: '"Crimson Pro", serif',
-          fontWeight: 300,
+          fontFamily: '"Helvetica Neue", Arial, sans-serif',
+          fontWeight: 800,
           fontSize:
             remaining !== null
               ? (active.plannedSeconds && active.plannedSeconds >= 3600
-                  ? "clamp(4rem, 17vw, 18rem)"
-                  : "clamp(6rem, 24vw, 22rem)")
+                  ? "clamp(4rem, 16vw, 17rem)"
+                  : "clamp(5.5rem, 22vw, 20rem)")
               : (elapsed >= 3600
-                  ? "clamp(4rem, 17vw, 18rem)"
-                  : "clamp(6rem, 24vw, 22rem)"),
+                  ? "clamp(4rem, 16vw, 17rem)"
+                  : "clamp(5.5rem, 22vw, 20rem)"),
           letterSpacing: "-0.04em",
           color: fg,
           opacity: active.pausedAt ? 0.45 : 1,
