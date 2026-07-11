@@ -49,12 +49,13 @@ import {
   stripMarkdown,
 } from "@/modules/notes/utils";
 
-type SearchParams = { folder?: string; note?: string };
+type SearchParams = { folder?: string; note?: string; focus?: boolean };
 
 export const Route = createFileRoute("/notes")({
   validateSearch: (s: Record<string, unknown>): SearchParams => ({
     folder: typeof s.folder === "string" ? s.folder : undefined,
     note: typeof s.note === "string" ? s.note : undefined,
+    focus: s.focus === true || s.focus === "true" ? true : undefined,
   }),
   head: () => ({
     meta: [
@@ -73,7 +74,17 @@ function NotesPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const qc = useQueryClient();
 
-  const [focusMode, setFocusMode] = useState(false);
+  const [focusMode, setFocusMode] = useState(search.focus ?? false);
+
+  // Ao chegar de um atalho externo (ex.: "Nova nota" em Tarefas) com ?focus,
+  // abre já expandido e limpa o parâmetro para não reativar em navegações.
+  useEffect(() => {
+    if (search.focus) {
+      setFocusMode(true);
+      navigate({ search: (prev: SearchParams) => ({ ...prev, focus: undefined }), replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.focus]);
 
   const foldersQ = useQuery({ queryKey: ["note_folders"], queryFn: fetchFolders });
   const notesQ = useQuery({ queryKey: ["notes"], queryFn: fetchNotes });

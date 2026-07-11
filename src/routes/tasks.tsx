@@ -1,9 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useRef, useState } from "react";
 import { useMobileFab } from "@/routes/__root";
 import { toast } from "sonner";
-import { ArrowRight, Calendar as CalendarIcon, Check, CheckCheck, ChevronLeft, ChevronRight, FolderInput, GripVertical, Pencil, Plus, RotateCcw, Timer as TimerIcon, Trash2, X } from "lucide-react";
+import { ArrowRight, Calendar as CalendarIcon, Check, CheckCheck, ChevronLeft, ChevronRight, FolderInput, GripVertical, NotebookPen, Pencil, Plus, RotateCcw, Timer as TimerIcon, Trash2, X } from "lucide-react";
 import { StartFocusDialog } from "@/components/timer/StartFocusDialog";
 import { Pulse } from "@/components/Pulse";
 import {
@@ -19,11 +19,11 @@ import {
 import type { Bucket, Task, TaskStatus } from "@/modules/tasks/types";
 import {
   bucketDueDate,
-  groupByBucket,
   toIsoDate,
   todayIso,
   tomorrowIso,
 } from "@/modules/tasks/buckets";
+import { createNote } from "@/modules/notes/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -119,11 +119,9 @@ function TasksPage() {
     return tasks.filter((t) => t.project_id === activeProject);
   }, [tasks, activeProject]);
 
-  const buckets = useMemo(() => groupByBucket(visibleTasks), [visibleTasks]);
-
-  // Bento: linha 2 mostra os 3 dias após amanhã (hoje+2 … hoje+4).
+  // Bento: linha 2 mostra amanhã e os 2 dias seguintes (hoje+1 … hoje+3).
   const next3Isos = useMemo(
-    () => [2, 3, 4].map((n) => addDaysIso(todayIso(), n)),
+    () => [1, 2, 3].map((n) => addDaysIso(todayIso(), n)),
     [],
   );
   // Backlog = tudo que é pendente e não tem data.
@@ -504,7 +502,7 @@ function TasksPage() {
 
       {view === "week" && (
       <>
-      {/* Bento linha 1 — Hoje dominante + Amanhã estreito */}
+      {/* Bento linha 1 — Hoje dominante + ações rápidas */}
       <div className="grid items-stretch gap-5 md:grid-cols-[1.8fr_1fr]">
         <DayFocus
           iso={selectedIso}
@@ -518,22 +516,10 @@ function TasksPage() {
           quickAddRef={todayQuickAddRef}
           {...columnHandlers}
         />
-        <DayColumn
-          dayNumber={dayNumber(tomorrowIso())}
-          weekday={weekdayLabel(tomorrowIso())}
-          label="Amanhã"
-          tasks={buckets.tomorrow}
-          bucket="tomorrow"
-          onAdd={(title) =>
-            create.mutate({ title, due_date: tomorrowIso(), project_id: newTaskProjectId })
-          }
-          loading={isLoading}
-          {...columnHandlers}
-          emptyText="Nada agendado."
-        />
+        <QuickActionsCard />
       </div>
 
-      {/* Bento linha 2 — os 3 dias seguintes */}
+      {/* Bento linha 2 — amanhã e os 2 dias seguintes */}
       <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:snap-none md:grid-cols-3 md:overflow-visible md:px-0 md:pb-0">
         {next3Isos.map((iso) => (
           <MiniDayCard
@@ -832,152 +818,51 @@ function DayFocus({
   );
 }
 
-/* ---------------------- Day column ---------------------- */
+/* ---------------------- Quick actions (bento, ao lado do Hoje) ---------------------- */
 
-function DayColumn({
-  dayNumber,
-  weekday,
-  label,
-  accent,
-  tasks,
-  bucket,
-  onAdd,
-  loading,
-  emptyText,
-  quickAddRef,
-  ...handlers
-}: ColumnHandlers & {
-  dayNumber: number | null;
-  weekday: string;
-  label: string;
-  accent?: boolean;
-  tasks: Task[];
-  bucket: Bucket;
-  onAdd: (title: string) => void;
-  loading: boolean;
-  emptyText: string;
-  quickAddRef?: React.RefObject<HTMLInputElement | null>;
-}) {
-  const [drag, setDrag] = useState(false);
-  const [insertAt, setInsertAt] = useState<number | null>(null);
-  const pending = tasks.filter((t) => t.status === "pending");
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDrag(false);
-    const id = e.dataTransfer.getData("text/task-id");
-    if (!id) { setInsertAt(null); return; }
-    const currentIdx = pending.findIndex((t) => t.id === id);
-    if (currentIdx >= 0) {
-      // Same column — reorder
-      const target = insertAt ?? pending.length;
-      const without = pending.map((t) => t.id).filter((tid) => tid !== id);
-      const adjusted = target > currentIdx ? target - 1 : target;
-      without.splice(Math.max(0, adjusted), 0, id);
-      handlers.onReorder(without);
-    } else {
-      handlers.onMove(id, bucket);
-    }
-    setInsertAt(null);
-  }
+function QuickActionsCard() {
+  const navigate = useNavigate();
+  const [focusOpen, setFocusOpen] = useState(false);
+  const newNote = useMutation({
+    mutationFn: () => createNote(null),
+    onSuccess: (n) => navigate({ to: "/notes", search: { note: n.id, focus: true } }),
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   return (
-    <section
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDrag(true);
-        // If hovering over the column background (not a task row), insert at end
-        if (!(e.target as HTMLElement).closest("[data-task-row]")) {
-          setInsertAt(pending.length);
-        }
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          setDrag(false);
-          setInsertAt(null);
-        }
-      }}
-      onDrop={handleDrop}
-      className={`flex h-full min-h-[420px] w-full flex-col rounded-2xl border bg-card transition-colors ${
-        drag
-          ? "border-foreground/40 bg-secondary/60"
-          : accent
-            ? "border-border"
-            : "border-border/70"
-      }`}
-    >
-      {/* Column header */}
-      <header className="flex items-baseline justify-between gap-4 px-5 pt-5">
-        <div className="flex items-baseline gap-3">
-          {dayNumber !== null && (
-            <span
-              className={`tabular-nums leading-none ${
-                accent ? "text-5xl font-semibold" : "text-3xl font-medium text-muted-foreground"
-              }`}
-            >
-              {dayNumber}
-            </span>
-          )}
-          <div className="flex flex-col">
-            <span
-              className={`text-sm font-semibold ${
-                accent ? "text-foreground" : "text-foreground/80"
-              }`}
-            >
-              {label}
-            </span>
-            <span className="text-xs text-muted-foreground">{weekday}</span>
-          </div>
-        </div>
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {pending.length}
-        </span>
+    <section className="flex h-full flex-col rounded-2xl border border-border bg-card md:min-h-[420px]">
+      <header className="flex flex-col px-6 pt-6">
+        <span className="text-sm font-semibold text-foreground">Atalhos</span>
+        <span className="text-xs text-muted-foreground">começar sem fricção</span>
       </header>
-
-      <div className="px-5 pt-4">
-        <QuickAdd
-          placeholder={accent ? "O que move o dia?" : "Adicionar…"}
-          onAdd={onAdd}
-          inputRef={quickAddRef}
-        />
+      <div className="flex flex-1 flex-col gap-3 p-5 pt-4">
+        <button
+          onClick={() => setFocusOpen(true)}
+          className="group flex min-h-[120px] flex-1 flex-col justify-between rounded-xl border border-border/70 bg-secondary/30 p-5 text-left transition-colors hover:border-foreground/30 hover:bg-secondary/60"
+        >
+          <TimerIcon className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-foreground" />
+          <div>
+            <span className="text-base font-semibold text-foreground">Iniciar foco</span>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              uma sessão de trabalho cronometrada
+            </p>
+          </div>
+        </button>
+        <button
+          onClick={() => newNote.mutate()}
+          disabled={newNote.isPending}
+          className="group flex min-h-[120px] flex-1 flex-col justify-between rounded-xl border border-border/70 bg-secondary/30 p-5 text-left transition-colors hover:border-foreground/30 hover:bg-secondary/60 disabled:opacity-60"
+        >
+          <NotebookPen className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-foreground" />
+          <div>
+            <span className="text-base font-semibold text-foreground">Nova nota</span>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              abre uma página em branco pra escrever
+            </p>
+          </div>
+        </button>
       </div>
-
-      {/* Task list */}
-      <ul className="flex-1 px-2 pb-3 pt-2">
-        {loading && (
-          <li className="flex items-center justify-center px-3 py-8">
-            <Pulse size={10} />
-          </li>
-        )}
-        {!loading && pending.length === 0 && (
-          <li className="px-3 py-10 text-sm text-muted-foreground">{emptyText}</li>
-        )}
-        {pending.map((t, idx) =>
-          handlers.editingId === t.id ? (
-            <EditRow
-              key={t.id}
-              task={t}
-              onSave={(title, desc) => handlers.onSaveEdit(t.id, title, desc)}
-              onCancel={handlers.onCancelEdit}
-            />
-          ) : (
-            <React.Fragment key={t.id}>
-              {insertAt === idx && (
-                <li aria-hidden className="mx-3 my-0.5 h-0.5 rounded-full bg-primary/70" />
-              )}
-              <TaskRow
-                task={t}
-                accent={accent}
-                onDragOverHint={(isBottom) => setInsertAt(isBottom ? idx + 1 : idx)}
-                {...handlers}
-              />
-            </React.Fragment>
-          ),
-        )}
-        {insertAt === pending.length && pending.length > 0 && (
-          <li aria-hidden className="mx-3 my-0.5 h-0.5 rounded-full bg-primary/70" />
-        )}
-      </ul>
+      <StartFocusDialog open={focusOpen} onOpenChange={setFocusOpen} />
     </section>
   );
 }
@@ -1193,7 +1078,7 @@ function MiniDayCard({
   const [drag, setDrag] = useState(false);
   const pending = tasks.filter((t) => t.status === "pending");
   const num = dayNumber(iso);
-  const wd = weekdayLabel(iso);
+  const wd = iso === tomorrowIso() ? "amanhã" : weekdayLabel(iso);
   return (
     <div
       onDragOver={(e) => {
