@@ -19,6 +19,7 @@ import {
   setTabTitle,
 } from "@/modules/timer/notify";
 import { acquireWakeLock, releaseWakeLock } from "@/modules/timer/wake-lock";
+import { AnalogFocusClock } from "@/components/timer/AnalogFocusClock";
 import type { ActiveSession } from "@/modules/timer/types";
 
 export const Route = createFileRoute("/timer/focus")({
@@ -167,6 +168,48 @@ function FocusPage() {
   if (!active) return null;
 
   const display = remaining !== null ? formatClock(remaining) : formatClock(elapsed);
+
+  // Modo Relógio (count_up) — cronógrafo analógico, sempre escuro, toma a tela.
+  if (active.mode === "count_up") {
+    const cbg = "#11140f";
+    const ctext = "#c3c8b4";
+    const csubtle = "#5a6150";
+    return (
+      <div
+        className="fixed inset-0 z-[100] flex flex-col items-center justify-center"
+        style={{ backgroundColor: cbg, color: ctext }}
+      >
+        <button
+          onClick={togglePause}
+          className="flex cursor-pointer flex-col items-center gap-8 select-none"
+          aria-label={active.pausedAt ? "Retomar" : "Pausar"}
+        >
+          <AnalogFocusClock active={active} size={360} />
+          <span
+            className="tabular-nums text-2xl"
+            style={{
+              fontFamily: '"Crimson Pro", serif',
+              fontWeight: 300,
+              letterSpacing: "0.04em",
+              color: ctext,
+              opacity: active.pausedAt ? 0.45 : 0.85,
+              transition: "opacity 200ms ease",
+            }}
+          >
+            {formatClock(elapsed)}
+          </span>
+        </button>
+
+        <button
+          onClick={() => finish({ completed: false })}
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 rounded-full px-6 py-2 text-xs uppercase tracking-[0.25em] transition-opacity hover:opacity-100"
+          style={{ color: csubtle, opacity: 0.7, border: `1px solid ${csubtle}33` }}
+        >
+          Finalizar
+        </button>
+      </div>
+    );
+  }
 
   const bg = night ? "#11140f" : "#ffffff";
   const fg = night ? "#9ca38f" : "#6b6b6b";

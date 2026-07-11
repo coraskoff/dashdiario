@@ -1,18 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { Clock, Timer, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useQuery } from "@tanstack/react-query";
-import { fetchProjects } from "@/modules/projects/api";
+import { Slider } from "@/components/ui/slider";
 import { writeActive } from "@/modules/timer/active-session";
-import type { TimerMode } from "@/modules/timer/types";
 
-const PRESETS: { label: string; seconds: number | null; mode: TimerMode }[] = [
-  { label: "Livre", seconds: null, mode: "count_up" },
-  { label: "25 min", seconds: 25 * 60, mode: "count_down" },
-  { label: "50 min", seconds: 50 * 60, mode: "count_down" },
-  { label: "90 min", seconds: 90 * 60, mode: "count_down" },
-];
+type Mode = "clock" | "session";
+
+const MIN = 5;
+const MAX = 120;
 
 export function StartFocusDialog({
   open,
@@ -26,30 +22,36 @@ export function StartFocusDialog({
   initialTag?: string;
 }) {
   const navigate = useNavigate();
-  const [presetIdx, setPresetIdx] = useState(1);
-  const [projectId, setProjectId] = useState<string | null>(initialProjectId ?? null);
-  const [tag, setTag] = useState(initialTag ?? "");
+  const [mode, setMode] = useState<Mode>("clock");
+  const [minutes, setMinutes] = useState(25);
 
-  const { data: projects = [] } = useQuery({ queryKey: ["projects"], queryFn: fetchProjects });
-
-  // Sync when opened with new defaults
+  // Reinicia ao abrir
   useEffect(() => {
     if (open) {
-      setProjectId(initialProjectId ?? null);
-      setTag(initialTag ?? "");
+      setMode("clock");
+      setMinutes(25);
     }
-  }, [open, initialProjectId, initialTag]);
+  }, [open]);
+
+  // Esc fecha
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onOpenChange(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onOpenChange]);
 
   if (!open) return null;
 
   const start = () => {
-    const preset = PRESETS[presetIdx];
     writeActive({
       startedAt: Date.now(),
-      mode: preset.mode,
-      plannedSeconds: preset.seconds,
-      projectId,
-      tag: tag.trim() || null,
+      mode: mode === "clock" ? "count_up" : "count_down",
+      plannedSeconds: mode === "clock" ? null : minutes * 60,
+      projectId: initialProjectId ?? null,
+      tag: initialTag ?? null,
       pausedAt: null,
       pausedAccumMs: 0,
     });
@@ -58,84 +60,140 @@ export function StartFocusDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl border border-border/60 bg-background p-6 shadow-xl shadow-foreground/10">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold tracking-tight">Iniciar foco</h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/25 px-4 backdrop-blur-sm"
+      onClick={() => onOpenChange(false)}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl shadow-foreground/10"
+      >
+        <div className="flex items-center justify-between px-6 pt-6">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Iniciar foco</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Como você quer começar?</p>
+          </div>
           <button
             onClick={() => onOpenChange(false)}
-            className="rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            aria-label="Fechar"
+            className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
-            Fechar
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="mt-2 space-y-5">
-          <div>
-            <p className="mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">Modo</p>
-            <div className="grid grid-cols-4 gap-1.5">
-              {PRESETS.map((p, i) => (
-                <button
-                  key={p.label}
-                  onClick={() => setPresetIdx(i)}
-                  className={`rounded-md border px-2 py-2 text-sm transition-colors ${
-                    presetIdx === i
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border/60 bg-background text-foreground hover:bg-secondary"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
+        <div className="grid grid-cols-2 gap-3 px-6 pt-5">
+          <ModeCard
+            active={mode === "clock"}
+            onClick={() => setMode("clock")}
+            icon={<Clock className="h-5 w-5" strokeWidth={1.75} />}
+            title="Relógio"
+            subtitle="Tempo livre, conta pra cima."
+          />
+          <ModeCard
+            active={mode === "session"}
+            onClick={() => setMode("session")}
+            icon={<Timer className="h-5 w-5" strokeWidth={1.75} />}
+            title="Sessão"
+            subtitle="Contagem regressiva."
+          />
+        </div>
+
+        {/* Configuração da sessão — altura anima entre os modos */}
+        <div
+          className="grid transition-all duration-300 ease-out"
+          style={{ gridTemplateRows: mode === "session" ? "1fr" : "0fr" }}
+        >
+          <div className="overflow-hidden">
+            <div className="px-6 pt-6">
+              <div className="flex items-baseline justify-between">
+                <span className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                  Duração
+                </span>
+                <div className="flex items-baseline gap-1.5">
+                  <span
+                    className="tabular-nums text-3xl font-semibold leading-none tracking-tight"
+                    style={{ fontFamily: '"Crimson Pro", serif' }}
+                  >
+                    {minutes}
+                  </span>
+                  <span className="text-sm text-muted-foreground">min</span>
+                </div>
+              </div>
+              <Slider
+                value={[minutes]}
+                min={MIN}
+                max={MAX}
+                step={5}
+                onValueChange={(v) => setMinutes(v[0])}
+                className="mt-4"
+              />
+              <div className="mt-2 flex justify-between text-[11px] tabular-nums text-muted-foreground/60">
+                <span>{MIN}m</span>
+                <span>{MAX}m</span>
+              </div>
+              <div className="mt-4 flex gap-1.5">
+                {[25, 50, 90].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setMinutes(m)}
+                    className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                      minutes === m
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border/60 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {m} min
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
+        </div>
 
-          <div>
-            <p className="mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">Projeto</p>
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                onClick={() => setProjectId(null)}
-                className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                  projectId === null
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-border/60 text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Sem projeto
-              </button>
-              {projects.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setProjectId(p.id)}
-                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                    projectId === p.id
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border/60 text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
-              Descrição · opcional
-            </p>
-            <Input
-              value={tag}
-              onChange={(e) => setTag(e.target.value)}
-              placeholder="Ex: deep work, reunião…"
-              className="h-9"
-            />
-          </div>
-
-          <Button onClick={start} className="w-full h-11 text-base">
+        <div className="px-6 pb-6 pt-6">
+          <Button onClick={start} className="h-11 w-full text-base">
             Começar →
           </Button>
         </div>
       </div>
     </div>
+  );
+}
+
+function ModeCard({
+  active,
+  onClick,
+  icon,
+  title,
+  subtitle,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex flex-col gap-3 rounded-xl border p-4 text-left transition-all ${
+        active
+          ? "border-foreground bg-secondary/60 shadow-sm"
+          : "border-border/60 hover:border-foreground/30 hover:bg-secondary/30"
+      }`}
+    >
+      <span
+        className={`transition-colors ${active ? "text-foreground" : "text-muted-foreground"}`}
+      >
+        {icon}
+      </span>
+      <span>
+        <span className="block text-sm font-semibold text-foreground">{title}</span>
+        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+          {subtitle}
+        </span>
+      </span>
+    </button>
   );
 }
