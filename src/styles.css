@@ -221,7 +221,7 @@
 }
 .flip-card {
   position: relative;
-  width: calc(var(--h) * 0.92);
+  width: calc(var(--h) * 1.02);
   height: var(--h);
   border-radius: calc(var(--h) * 0.1);
   background: #0e0e0e;
@@ -281,10 +281,10 @@
   height: var(--h);
   line-height: var(--h);
   text-align: center;
-  font-size: calc(var(--h) * 0.8);
+  font-size: calc(var(--h) * 0.64);
   font-weight: 800;
   color: #b6b6b6;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
 }
 .flip-top span,
 .flip-flap-top span {

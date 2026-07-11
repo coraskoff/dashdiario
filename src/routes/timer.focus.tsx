@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, X } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -25,6 +25,16 @@ import type { ActiveSession } from "@/modules/timer/types";
 export const Route = createFileRoute("/timer/focus")({
   component: FocusPage,
 });
+
+/** Coloca a janela do app em tela cheia (só funciona dentro do Tauri). */
+async function setAppFullscreen(on: boolean) {
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().setFullscreen(on);
+  } catch {
+    // fora do Tauri (ex.: navegador) — ignora
+  }
+}
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -74,6 +84,15 @@ function FocusPage() {
     const id = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(id);
   }, []);
+
+  // Modo Relógio (count_up) abre em tela cheia; sai ao fechar.
+  useEffect(() => {
+    if (active?.mode !== "count_up") return;
+    setAppFullscreen(true);
+    return () => {
+      setAppFullscreen(false);
+    };
+  }, [active?.mode]);
 
   const elapsed = active ? elapsedSeconds(active, now) : 0;
   const remaining =
@@ -196,10 +215,11 @@ function FocusPage() {
 
         <button
           onClick={() => finish({ completed: false })}
-          className="absolute bottom-10 left-1/2 -translate-x-1/2 rounded-full px-6 py-2 text-xs uppercase tracking-[0.25em] transition-opacity hover:opacity-100"
-          style={{ color: "#6a6a6a", opacity: 0.75, border: "1px solid #6a6a6a33" }}
+          aria-label="Fechar relógio"
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full p-2.5 opacity-30 transition-opacity hover:opacity-90"
+          style={{ color: "#8a8a8a" }}
         >
-          Finalizar
+          <X className="h-6 w-6" strokeWidth={1.5} />
         </button>
       </div>
     );
