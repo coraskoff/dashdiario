@@ -12,11 +12,18 @@ struct ActiveApp {
 #[tauri::command]
 fn active_app() -> Option<ActiveApp> {
     match active_win_pos_rs::get_active_window() {
-        Ok(w) => Some(ActiveApp {
-            process: w.process_name.to_lowercase(),
-            app: w.app_name,
-            title: w.title,
-        }),
+        Ok(w) => {
+            let process = w
+                .process_path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            Some(ActiveApp {
+                process,
+                app: w.app_name,
+                title: w.title,
+            })
+        }
         Err(_) => None,
     }
 }
