@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Flame, Plus, Check, Clock } from "lucide-react";
+import { Flame, Plus, Check, Clock, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,8 @@ import {
   saveWorkoutCheckin,
   setDietScheduleDay,
   setScheduleDay,
+  updateDietPlan,
+  updatePlanMeta,
   upsertDish,
   upsertExercise,
 } from "@/modules/health/api";
@@ -392,6 +394,16 @@ function PlanCard({
 }) {
   const qc = useQueryClient();
   const [editSession, setEditSession] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+
+  const renameMut = useMutation({
+    mutationFn: (name: string) => updatePlanMeta(plan.id, { name }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wplan"] });
+      setRenameOpen(false);
+      toast.success("Plano atualizado");
+    },
+  });
 
   const end = planEndDate(plan.started_at, plan.period_weeks);
   const now = new Date();
@@ -425,7 +437,27 @@ function PlanCard({
         <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Plano atual</p>
         <span className="text-xs text-muted-foreground">{plan.freq_target}×/sem</span>
       </div>
-      <p className="mt-2 text-[15px] font-semibold">{plan.name}</p>
+      <div className="mt-2 flex items-center gap-2">
+        <p className="text-[15px] font-semibold">{plan.name}</p>
+        <button
+          onClick={() => setRenameOpen(true)}
+          aria-label="Renomear plano"
+          className="text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Pencil size={13} />
+        </button>
+      </div>
+
+      {renameOpen && (
+        <NamePrompt
+          title="Renomear plano"
+          placeholder="Nome do plano"
+          initial={plan.name}
+          submitLabel="Salvar"
+          onCancel={() => setRenameOpen(false)}
+          onSubmit={(name) => renameMut.mutate(name)}
+        />
+      )}
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         {sessions.map((s) => (
@@ -820,7 +852,13 @@ function DietaView() {
           </div>
         </section>
 
-        <DietPlanCard planId={plan.id} variants={variants} dishes={dishes} schedule={schedule} />
+        <DietPlanCard
+          planId={plan.id}
+          planName={plan.name}
+          variants={variants}
+          dishes={dishes}
+          schedule={schedule}
+        />
         <DietHeatmap logs={logs} />
       </div>
 
@@ -952,11 +990,13 @@ function TodayDietCard({
 
 function DietPlanCard({
   planId,
+  planName,
   variants,
   dishes,
   schedule,
 }: {
   planId: string;
+  planName: string;
   variants: { id: string; label: string }[];
   dishes: {
     id: string;
@@ -969,10 +1009,20 @@ function DietPlanCard({
 }) {
   const qc = useQueryClient();
   const [editVariant, setEditVariant] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [name, setName] = useState("");
   const [qty, setQty] = useState("");
   const [meal, setMeal] = useState("");
   const WD = ["D", "S", "T", "Q", "Q", "S", "S"];
+
+  const renameMut = useMutation({
+    mutationFn: (n: string) => updateDietPlan(planId, n),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dplan"] });
+      setRenameOpen(false);
+      toast.success("Plano atualizado");
+    },
+  });
 
   const scheduleMut = useMutation({
     mutationFn: ({ weekday, variantId }: { weekday: number; variantId: string | null }) =>
@@ -1012,6 +1062,28 @@ function DietPlanCard({
   return (
     <section className="rounded-2xl border border-border/60 bg-card p-5">
       <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Plano alimentar</p>
+      <div className="mt-2 flex items-center gap-2">
+        <p className="text-[15px] font-semibold">{planName}</p>
+        <button
+          onClick={() => setRenameOpen(true)}
+          aria-label="Renomear plano"
+          className="text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Pencil size={13} />
+        </button>
+      </div>
+
+      {renameOpen && (
+        <NamePrompt
+          title="Renomear plano"
+          placeholder="Nome do plano"
+          initial={planName}
+          submitLabel="Salvar"
+          onCancel={() => setRenameOpen(false)}
+          onSubmit={(n) => renameMut.mutate(n)}
+        />
+      )}
+
       <div className="mt-3 flex flex-wrap gap-1.5">
         {variants.map((v) => (
           <button
@@ -1196,13 +1268,17 @@ function NamePrompt({
   placeholder,
   onSubmit,
   onCancel,
+  initial = "",
+  submitLabel = "Criar",
 }: {
   title: string;
   placeholder: string;
   onSubmit: (name: string) => void;
   onCancel: () => void;
+  initial?: string;
+  submitLabel?: string;
 }) {
-  const [val, setVal] = useState("");
+  const [val, setVal] = useState(initial);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -1228,7 +1304,7 @@ function NamePrompt({
           <Button variant="ghost" onClick={onCancel}>
             Cancelar
           </Button>
-          <Button onClick={() => val.trim() && onSubmit(val.trim())}>Criar</Button>
+          <Button onClick={() => val.trim() && onSubmit(val.trim())}>{submitLabel}</Button>
         </div>
       </div>
     </div>

@@ -428,6 +428,14 @@ export async function createDietPlan(name: string): Promise<DietPlan> {
   return { id, name: name.trim(), started_at: now, ended_at: null, is_active: 1 };
 }
 
+export async function updateDietPlan(id: string, name: string): Promise<void> {
+  await run(`UPDATE diet_plans SET name = $1, updated_at = $2 WHERE id = $3`, [
+    name.trim(),
+    nowIso(),
+    id,
+  ]);
+}
+
 export async function createDietVariant(
   planId: string,
   label: string,
