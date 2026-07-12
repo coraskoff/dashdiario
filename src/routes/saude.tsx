@@ -130,6 +130,8 @@ function ChipTab({
 function TreinoView() {
   const qc = useQueryClient();
   const [startOpen, setStartOpen] = useState(false);
+  // Sessão escolhida manualmente num dia de descanso ("treinar mesmo assim").
+  const [manualSessionId, setManualSessionId] = useState<string | null>(null);
   useMobileFab(() => setStartOpen(true));
 
   const { data: plan, isLoading } = useQuery({ queryKey: ["wplan"], queryFn: fetchActivePlan });
@@ -194,8 +196,16 @@ function TreinoView() {
 
   const todayWeekday = new Date().getDay();
   const todaySchedule = schedule.find((s) => s.weekday === todayWeekday);
-  const todaySession =
-    sessions.find((s) => s.id === todaySchedule?.session_id) ?? sessions[0] ?? null;
+  // Só há treino hoje se a agenda marcar uma sessão pra este dia. Sem marcação
+  // = descanso (não empurra o "A"). O usuário pode treinar mesmo assim escolhendo.
+  const scheduledSession = todaySchedule?.session_id
+    ? (sessions.find((s) => s.id === todaySchedule.session_id) ?? null)
+    : null;
+  const manualSession = manualSessionId
+    ? (sessions.find((s) => s.id === manualSessionId) ?? null)
+    : null;
+  const todaySession = scheduledSession ?? manualSession;
+  const isRestToday = !todaySession;
   const todayExercises = exercises.filter((e) => e.session_id === todaySession?.id);
   const todayLog = logs.find((l) => l.date === todayIso());
 
@@ -213,6 +223,9 @@ function TreinoView() {
         sessionLabel={todaySession?.label ?? "—"}
         exercises={todayExercises}
         alreadyLogged={!!todayLog}
+        isRest={isRestToday}
+        sessions={sessions}
+        onPickSession={setManualSessionId}
       />
 
       <div className="flex flex-col gap-4">
@@ -253,6 +266,9 @@ function TodayWorkoutCard({
   sessionLabel,
   exercises,
   alreadyLogged,
+  isRest,
+  sessions,
+  onPickSession,
 }: {
   planId: string;
   sessionId: string | null;
@@ -265,10 +281,14 @@ function TodayWorkoutCard({
     target_weight: number | null;
   }[];
   alreadyLogged: boolean;
+  isRest: boolean;
+  sessions: { id: string; label: string }[];
+  onPickSession: (id: string) => void;
 }) {
   const qc = useQueryClient();
   const [done, setDone] = useState<Record<string, boolean>>({});
   const [loads, setLoads] = useState<Record<string, string>>({});
+  const [picking, setPicking] = useState(false);
 
   const checkinMut = useMutation({
     mutationFn: async () => {
@@ -310,13 +330,49 @@ function TodayWorkoutCard({
         <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
           Treino de hoje
         </p>
-        {alreadyLogged && (
+        {alreadyLogged && !isRest && (
           <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
             <Check size={12} /> registrado
           </span>
         )}
       </div>
 
+      {isRest ? (
+        <div className="mt-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-muted px-2 text-sm font-bold text-muted-foreground">
+              —
+            </span>
+            <p className="text-lg font-semibold tracking-tight">Dia de descanso</p>
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Nenhum treino marcado pra hoje na sua agenda.
+          </p>
+          {sessions.length > 0 &&
+            (picking ? (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">Treinar:</span>
+                {sessions.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => onPickSession(s.id)}
+                    className="flex h-8 min-w-8 items-center justify-center rounded-lg border border-border bg-muted px-2 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <button
+                onClick={() => setPicking(true)}
+                className="mt-3 text-xs text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground"
+              >
+                Treinar mesmo assim
+              </button>
+            ))}
+        </div>
+      ) : (
+      <>
       <div className="mt-3 flex items-center gap-3">
         <span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-foreground px-2 text-sm font-bold text-background">
           {sessionLabel}
@@ -384,6 +440,8 @@ function TodayWorkoutCard({
         <p className="mt-2 text-center text-xs text-muted-foreground">
           {doneCount} de {exercises.length} exercícios marcados
         </p>
+      )}
+      </>
       )}
     </section>
   );
