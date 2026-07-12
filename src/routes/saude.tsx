@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Flame, Plus, Check, Clock, Pencil } from "lucide-react";
+import { Flame, Plus, Check, Clock, Pencil, RotateCcw, History, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { useMobileFab } from "@/routes/__root";
 import { cn } from "@/lib/utils";
 import {
   addBodyWeight,
+  clonePlanAsNewCycle,
   createDietPlan,
   createDietVariant,
   createPlan,
@@ -22,14 +23,19 @@ import {
   fetchBodyWeights,
   fetchDietDishes,
   fetchDietLogs,
+  fetchDietOverrides,
+  fetchDietPlanHistory,
   fetchDietSchedule,
   fetchDietVariants,
   fetchExercises,
+  fetchPlanHistory,
   fetchSchedule,
   fetchSessions,
+  fetchSetLogs,
   fetchWorkoutLogs,
   saveDietCheckin,
   saveWorkoutCheckin,
+  setDietOverride,
   setDietScheduleDay,
   setScheduleDay,
   updateDietPlan,
@@ -45,7 +51,15 @@ import {
   startOfWeek,
   todayIso,
 } from "@/modules/health/calc";
-import type { DietStatus, SetInput } from "@/modules/health/types";
+import type {
+  BodyWeightLog,
+  DietPlan,
+  DietStatus,
+  SetInput,
+  WorkoutLog,
+  WorkoutPlan,
+  WorkoutSession,
+} from "@/modules/health/types";
 
 export const Route = createFileRoute("/saude")({
   component: SaudeHome,
@@ -208,7 +222,7 @@ function TreinoView() {
           schedule={schedule}
           todaySessionId={todaySession?.id ?? null}
         />
-        <TreinoHeatmap logs={logs} />
+        <TreinoHeatmap logs={logs} sessions={sessions} />
         <div className="grid grid-cols-3 gap-3">
           <MiniStat
             label="streak"
@@ -395,6 +409,10 @@ function PlanCard({
   const qc = useQueryClient();
   const [editSession, setEditSession] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [freqOpen, setFreqOpen] = useState(false);
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const [cycleOpen, setCycleOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const renameMut = useMutation({
     mutationFn: (name: string) => updatePlanMeta(plan.id, { name }),
@@ -402,6 +420,30 @@ function PlanCard({
       qc.invalidateQueries({ queryKey: ["wplan"] });
       setRenameOpen(false);
       toast.success("Plano atualizado");
+    },
+  });
+
+  const metaMut = useMutation({
+    mutationFn: (patch: { freq_target?: number; period_weeks?: number | null }) =>
+      updatePlanMeta(plan.id, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wplan"] });
+      setFreqOpen(false);
+      setPeriodOpen(false);
+    },
+  });
+
+  const cycleMut = useMutation({
+    mutationFn: (name: string) =>
+      clonePlanAsNewCycle(plan.id, {
+        name,
+        period_weeks: plan.period_weeks,
+        freq_target: plan.freq_target,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries();
+      setCycleOpen(false);
+      toast.success("Novo ciclo iniciado — o anterior foi pro histórico.");
     },
   });
 
@@ -435,7 +477,20 @@ function PlanCard({
     <section className="rounded-2xl border border-border/60 bg-card p-5">
       <div className="flex items-center justify-between">
         <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Plano atual</p>
-        <span className="text-xs text-muted-foreground">{plan.freq_target}×/sem</span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setFreqOpen(true)}
+            className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {plan.freq_target}×/sem
+          </button>
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            histórico
+          </button>
+        </div>
       </div>
       <div className="mt-2 flex items-center gap-2">
         <p className="text-[15px] font-semibold">{plan.name}</p>
@@ -459,6 +514,47 @@ function PlanCard({
         />
       )}
 
+      {freqOpen && (
+        <NamePrompt
+          title="Frequência semanal (treinos/semana)"
+          placeholder="3"
+          initial={String(plan.freq_target)}
+          submitLabel="Salvar"
+          onCancel={() => setFreqOpen(false)}
+          onSubmit={(v) => {
+            const n = parseInt(v, 10);
+            if (Number.isFinite(n) && n > 0) metaMut.mutate({ freq_target: n });
+          }}
+        />
+      )}
+
+      {periodOpen && (
+        <NamePrompt
+          title="Duração do ciclo (semanas)"
+          placeholder="8"
+          initial={plan.period_weeks ? String(plan.period_weeks) : ""}
+          submitLabel="Salvar"
+          onCancel={() => setPeriodOpen(false)}
+          onSubmit={(v) => {
+            const n = parseInt(v, 10);
+            metaMut.mutate({ period_weeks: Number.isFinite(n) && n > 0 ? n : null });
+          }}
+        />
+      )}
+
+      {cycleOpen && (
+        <NamePrompt
+          title="Iniciar novo ciclo"
+          placeholder="Nome do novo ciclo"
+          initial={nextCycleName(plan.name)}
+          submitLabel="Iniciar ciclo"
+          onCancel={() => setCycleOpen(false)}
+          onSubmit={(name) => cycleMut.mutate(name)}
+        />
+      )}
+
+      {historyOpen && <PlanHistoryModal kind="treino" onClose={() => setHistoryOpen(false)} />}
+
       <div className="mt-3 flex flex-wrap gap-1.5">
         {sessions.map((s) => (
           <button
@@ -481,22 +577,37 @@ function PlanCard({
       )}
 
       {/* período */}
-      {end && (
-        <div className="mt-4">
-          <p className="text-[10.5px] uppercase tracking-wide text-muted-foreground">
-            Ciclo · {weeksLeft === 0 ? "terminou" : `faltam ${weeksLeft} sem`}
-          </p>
+      <div className="mt-4">
+        <button
+          onClick={() => setPeriodOpen(true)}
+          className="text-[10.5px] uppercase tracking-wide text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          {end
+            ? `Ciclo · ${weeksLeft === 0 ? "terminou" : `faltam ${weeksLeft} sem`}`
+            : "Definir duração do ciclo"}
+        </button>
+        {end && (
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
             <div className="h-full rounded-full bg-foreground" style={{ width: `${pct}%` }} />
           </div>
-          {weeksLeft === 0 && (
-            <p className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-              Ciclo concluído — hora de revisar o treino. (Criar um novo plano arquiva este no
-              histórico.)
-            </p>
+        )}
+        {end && weeksLeft === 0 && (
+          <p className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            Ciclo concluído — hora de revisar o treino e evoluir as cargas.
+          </p>
+        )}
+        <button
+          onClick={() => setCycleOpen(true)}
+          className={cn(
+            "mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors",
+            end && weeksLeft === 0
+              ? "bg-foreground text-background hover:opacity-90"
+              : "bg-muted text-muted-foreground hover:text-foreground",
           )}
-        </div>
-      )}
+        >
+          <RotateCcw size={13} /> Iniciar novo ciclo
+        </button>
+      </div>
 
       {/* weekday assignment */}
       <div className="mt-4 flex gap-1">
@@ -625,10 +736,12 @@ function SessionEditor({ sessionId, onClose }: { sessionId: string; onClose: () 
   );
 }
 
-function TreinoHeatmap({ logs }: { logs: { date: string; performance: string }[] }) {
-  const perfByDate = new Map(logs.map((l) => [l.date, l.performance]));
+function TreinoHeatmap({ logs, sessions }: { logs: WorkoutLog[]; sessions: WorkoutSession[] }) {
+  const logByDate = new Map(logs.map((l) => [l.date, l]));
   const columns = buildColumns(12);
   const LEVEL = ["var(--muted)", "var(--h1)", "var(--h2)", "var(--h3)", "var(--h4)"];
+  const [selected, setSelected] = useState<string | null>(null);
+  const selectedLog = selected ? (logByDate.get(selected) ?? null) : null;
 
   return (
     <section className="rounded-2xl border border-border/60 bg-card p-5">
@@ -639,14 +752,23 @@ function TreinoHeatmap({ logs }: { logs: { date: string; performance: string }[]
         {columns.map((col, ci) => (
           <div key={ci} className="flex flex-col gap-1">
             {col.map((d, di) => {
+              const iso = isoDate(d);
               const isFuture = d > new Date();
-              const perf = perfByDate.get(isoDate(d)) ?? null;
-              const lvl = heatLevel(perf as never);
+              const log = logByDate.get(iso) ?? null;
+              const lvl = heatLevel((log?.performance ?? null) as never);
+              const isSelected = selected === iso;
               return (
-                <div
+                <button
                   key={di}
-                  title={`${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}${perf ? ` · ${perfLabel(perf)}` : ""}`}
-                  className={cn("h-3 w-3 rounded-[3px]", isFuture && "border border-border/40")}
+                  disabled={isFuture}
+                  onClick={() => log && setSelected(isSelected ? null : iso)}
+                  title={`${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}${log ? ` · ${perfLabel(log.performance)}` : ""}`}
+                  className={cn(
+                    "h-3 w-3 rounded-[3px] transition-transform",
+                    isFuture && "border border-border/40",
+                    log && "cursor-pointer hover:scale-110",
+                    isSelected && "ring-1 ring-foreground ring-offset-1 ring-offset-card",
+                  )}
                   style={!isFuture ? { background: LEVEL[lvl] } : undefined}
                 />
               );
@@ -661,13 +783,112 @@ function TreinoHeatmap({ logs }: { logs: { date: string; performance: string }[]
         ))}
         progrediu
       </div>
+
+      {selectedLog && (
+        <DayDetail
+          log={selectedLog}
+          sessionLabel={sessions.find((s) => s.id === selectedLog.session_id)?.label ?? null}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </section>
   );
 }
 
-function BodyWeightCard({ weights }: { weights: { date: string; weight: number }[] }) {
+function DayDetail({
+  log,
+  sessionLabel,
+  onClose,
+}: {
+  log: WorkoutLog;
+  sessionLabel: string | null;
+  onClose: () => void;
+}) {
+  const { data: sets = [] } = useQuery({
+    queryKey: ["wsetlogs", log.id],
+    queryFn: () => fetchSetLogs(log.id),
+  });
+
+  // Agrupa séries por exercício, preservando a ordem.
+  const groups: { name: string; sets: typeof sets }[] = [];
+  for (const s of sets) {
+    const last = groups[groups.length - 1];
+    if (last && last.name === s.exercise_name) last.sets.push(s);
+    else groups.push({ name: s.exercise_name, sets: [s] });
+  }
+
+  const dateLabel = new Date(log.date + "T12:00:00").toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  });
+
+  return (
+    <div className="mt-4 rounded-xl border border-border/60 bg-muted/40 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[11px] font-semibold capitalize">
+          {dateLabel}
+          {sessionLabel && (
+            <span className="ml-2 rounded bg-foreground px-1.5 py-0.5 text-[10px] font-bold text-background">
+              {sessionLabel}
+            </span>
+          )}
+          <span className="ml-2 text-[10px] font-normal text-muted-foreground">
+            {perfLabel(log.performance)}
+          </span>
+        </p>
+        <button
+          onClick={onClose}
+          className="text-muted-foreground hover:text-foreground"
+          aria-label="Fechar"
+        >
+          <X size={13} />
+        </button>
+      </div>
+      {groups.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Treino marcado sem séries registradas{log.completed ? " · completo" : ""}.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {groups.map((g, i) => (
+            <div key={i} className="flex items-center gap-2 text-sm">
+              <span className="flex-1 truncate font-medium">{g.name}</span>
+              <div className="flex flex-wrap justify-end gap-1">
+                {g.sets.map((s) => (
+                  <span
+                    key={s.id}
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[11px] tabular-nums",
+                      s.is_pr
+                        ? "border-transparent font-semibold text-amber-700 dark:text-amber-400"
+                        : "border-border text-muted-foreground",
+                    )}
+                    style={
+                      s.is_pr
+                        ? {
+                            background: "color-mix(in oklch, oklch(0.72 0.15 75) 22%, var(--card))",
+                          }
+                        : undefined
+                    }
+                  >
+                    {s.is_pr && "🏆 "}
+                    {s.weight}×{s.reps}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BodyWeightCard({ weights }: { weights: BodyWeightLog[] }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [val, setVal] = useState("");
 
   const last = weights[weights.length - 1] ?? null;
@@ -688,7 +909,20 @@ function BodyWeightCard({ weights }: { weights: { date: string; weight: number }
 
   return (
     <section className="rounded-2xl border border-border/60 bg-card p-5">
-      <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Peso corporal</p>
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Peso corporal</p>
+        {weights.length > 0 && (
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            histórico
+          </button>
+        )}
+      </div>
+      {historyOpen && (
+        <WeightHistoryModal weights={weights} onClose={() => setHistoryOpen(false)} />
+      )}
       <div className="mt-2 flex items-baseline gap-2">
         {editing || !last ? (
           <div className="flex items-baseline gap-2">
@@ -778,6 +1012,10 @@ function DietaView() {
     enabled: !!plan,
   });
   const { data: logs = [] } = useQuery({ queryKey: ["dlogs"], queryFn: fetchDietLogs });
+  const { data: overrides = [] } = useQuery({
+    queryKey: ["doverrides"],
+    queryFn: fetchDietOverrides,
+  });
 
   const createMut = useMutation({
     mutationFn: async (name: string) => {
@@ -818,10 +1056,14 @@ function DietaView() {
 
   const todayWd = new Date().getDay();
   const tomorrowWd = (todayWd + 1) % 7;
-  const todayVariant =
-    variants.find((v) => v.id === schedule.find((s) => s.weekday === todayWd)?.variant_id) ??
-    variants[0] ??
+  const todayOverride = overrides.find((o) => o.date === todayIso());
+  // Sobrescrita do dia vence a agenda da semana.
+  const todayVariantId =
+    todayOverride?.variant_id ??
+    schedule.find((s) => s.weekday === todayWd)?.variant_id ??
+    variants[0]?.id ??
     null;
+  const todayVariant = variants.find((v) => v.id === todayVariantId) ?? null;
   const tomorrowVariant = variants.find(
     (v) => v.id === schedule.find((s) => s.weekday === tomorrowWd)?.variant_id,
   );
@@ -835,6 +1077,8 @@ function DietaView() {
         variantLabel={todayVariant?.label ?? "—"}
         dishes={todayDishes}
         currentStatus={todayLog?.status ?? null}
+        variants={variants}
+        isOverridden={!!todayOverride}
       />
 
       <div className="flex flex-col gap-4">
@@ -879,20 +1123,33 @@ function TodayDietCard({
   variantLabel,
   dishes,
   currentStatus,
+  variants,
+  isOverridden,
 }: {
   variantId: string | null;
   variantLabel: string;
   dishes: { id: string; name: string; quantity: string | null; meal: string | null }[];
   currentStatus: DietStatus | null;
+  variants: { id: string; label: string }[];
+  isOverridden: boolean;
 }) {
   const qc = useQueryClient();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [swapOpen, setSwapOpen] = useState(false);
 
   const checkinMut = useMutation({
     mutationFn: (status: DietStatus) => saveDietCheckin(todayIso(), status, variantId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dlogs"] });
       toast.success("Check-in registrado.");
+    },
+  });
+
+  const overrideMut = useMutation({
+    mutationFn: (vId: string | null) => setDietOverride(todayIso(), vId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["doverrides"] });
+      setSwapOpen(false);
     },
   });
 
@@ -912,9 +1169,17 @@ function TodayDietCard({
 
   return (
     <section className="rounded-2xl border border-border/60 bg-card p-5">
-      <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
-        Cardápio de hoje
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
+          Cardápio de hoje
+        </p>
+        <button
+          onClick={() => setSwapOpen((v) => !v)}
+          className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          {isOverridden ? "trocado hoje" : "trocar cardápio"}
+        </button>
+      </div>
       <div className="mt-3 flex items-center gap-3">
         <span
           className="flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-sm font-bold"
@@ -924,6 +1189,38 @@ function TodayDietCard({
         </span>
         <p className="text-lg font-semibold tracking-tight">{dishes.length} pratos</p>
       </div>
+
+      {swapOpen && (
+        <div className="mt-3 rounded-xl border border-border/60 bg-muted/40 p-3">
+          <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+            Cardápio só de hoje
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {variants.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => overrideMut.mutate(v.id)}
+                className={cn(
+                  "flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-sm font-bold transition-colors",
+                  v.id === variantId
+                    ? "border-transparent bg-foreground text-background"
+                    : "border-border bg-card text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {v.label}
+              </button>
+            ))}
+            {isOverridden && (
+              <button
+                onClick={() => overrideMut.mutate(null)}
+                className="flex h-8 items-center justify-center rounded-lg border border-border bg-card px-3 text-xs text-muted-foreground hover:text-foreground"
+              >
+                voltar à agenda
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {dishes.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">
@@ -1010,6 +1307,7 @@ function DietPlanCard({
   const qc = useQueryClient();
   const [editVariant, setEditVariant] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [name, setName] = useState("");
   const [qty, setQty] = useState("");
   const [meal, setMeal] = useState("");
@@ -1061,7 +1359,17 @@ function DietPlanCard({
 
   return (
     <section className="rounded-2xl border border-border/60 bg-card p-5">
-      <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Plano alimentar</p>
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
+          Plano alimentar
+        </p>
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          histórico
+        </button>
+      </div>
       <div className="mt-2 flex items-center gap-2">
         <p className="text-[15px] font-semibold">{planName}</p>
         <button
@@ -1083,6 +1391,8 @@ function DietPlanCard({
           onSubmit={(n) => renameMut.mutate(n)}
         />
       )}
+
+      {historyOpen && <PlanHistoryModal kind="dieta" onClose={() => setHistoryOpen(false)} />}
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         {variants.map((v) => (
@@ -1309,6 +1619,143 @@ function NamePrompt({
       </div>
     </div>
   );
+}
+
+function ModalShell({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[80vh] w-full max-w-sm overflow-y-auto rounded-2xl border border-border bg-card p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-semibold">{title}</p>
+          <button
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="Fechar"
+          >
+            <X size={15} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function fmtPeriod(startedAt: string, endedAt: string | null): string {
+  const s = new Date(startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  if (!endedAt) return `desde ${s}`;
+  const e = new Date(endedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  return `${s} – ${e}`;
+}
+
+function PlanHistoryModal({ kind, onClose }: { kind: "treino" | "dieta"; onClose: () => void }) {
+  const { data: plans = [], isLoading } = useQuery<(WorkoutPlan | DietPlan)[]>({
+    queryKey: ["plan-history", kind],
+    queryFn: () => (kind === "treino" ? fetchPlanHistory() : fetchDietPlanHistory()),
+  });
+
+  return (
+    <ModalShell title="Histórico de planos" onClose={onClose}>
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Carregando…</p>
+      ) : plans.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nenhum plano ainda.</p>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {plans.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center justify-between gap-2 rounded-lg bg-muted/50 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{p.name}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {fmtPeriod(p.started_at, p.ended_at)}
+                </p>
+              </div>
+              {p.is_active ? (
+                <span className="shrink-0 rounded-full bg-emerald-600/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                  ativo
+                </span>
+              ) : (
+                <History size={13} className="shrink-0 text-muted-foreground/50" />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+function WeightHistoryModal({
+  weights,
+  onClose,
+}: {
+  weights: BodyWeightLog[];
+  onClose: () => void;
+}) {
+  const rows = [...weights].reverse(); // mais recente primeiro
+  return (
+    <ModalShell title="Histórico de peso" onClose={onClose}>
+      <div className="flex flex-col gap-1">
+        {rows.map((w, i) => {
+          const prev = rows[i + 1];
+          const delta = prev ? w.weight - prev.weight : null;
+          return (
+            <div key={w.id} className="flex items-center justify-between px-1 py-1.5 text-sm">
+              <span className="text-muted-foreground">
+                {new Date(w.date + "T12:00:00").toLocaleDateString("pt-BR", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "2-digit",
+                })}
+              </span>
+              <span className="flex items-baseline gap-2">
+                <span className="font-medium tabular-nums">
+                  {w.weight.toString().replace(".", ",")} kg
+                </span>
+                {delta !== null && delta !== 0 && (
+                  <span
+                    className={cn(
+                      "text-[11px] tabular-nums",
+                      delta < 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {delta < 0 ? "−" : "+"}
+                    {Math.abs(delta).toFixed(1).replace(".", ",")}
+                  </span>
+                )}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </ModalShell>
+  );
+}
+
+// Sugere o nome do próximo ciclo: incrementa um número final, ou anexa "· ciclo 2".
+function nextCycleName(name: string): string {
+  const m = name.match(/^(.*?)(\d+)\s*$/);
+  if (m) return `${m[1]}${parseInt(m[2], 10) + 1}`;
+  return `${name} · ciclo 2`;
 }
 
 // Colunas do mapa: 12 semanas (seg→dom), terminando na semana atual.

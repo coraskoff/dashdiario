@@ -121,6 +121,47 @@ export async function updatePlanMeta(
   await run(`UPDATE workout_plans SET ${sets.join(", ")} WHERE id = $${i}`, vals);
 }
 
+/**
+ * Inicia um novo ciclo a partir do plano atual: arquiva o ativo e cria uma
+ * nova versão já com as mesmas sessões, exercícios e agenda (o usuário evolui
+ * em cima, em vez de recomeçar do zero). O plano antigo fica no histórico.
+ */
+export async function clonePlanAsNewCycle(
+  sourcePlanId: string,
+  opts: { name: string; period_weeks: number | null; freq_target: number },
+): Promise<WorkoutPlan> {
+  const plan = await createPlan(opts); // já arquiva o ativo anterior
+
+  const sessions = await fetchSessions(sourcePlanId);
+  const idMap = new Map<string, string>(); // sessão antiga -> nova
+  for (const s of sessions) {
+    const created = await createSession(plan.id, s.label, s.position);
+    idMap.set(s.id, created.id);
+  }
+
+  const exercises = await fetchExercises(sessions.map((s) => s.id));
+  for (const e of exercises) {
+    const newSession = idMap.get(e.session_id);
+    if (!newSession) continue;
+    await upsertExercise({
+      session_id: newSession,
+      name: e.name,
+      target_sets: e.target_sets,
+      target_reps: e.target_reps,
+      target_weight: e.target_weight,
+      position: e.position,
+    });
+  }
+
+  const schedule = await fetchSchedule(sourcePlanId);
+  for (const entry of schedule) {
+    const mapped = entry.session_id ? (idMap.get(entry.session_id) ?? null) : null;
+    await setScheduleDay(plan.id, entry.weekday, mapped);
+  }
+
+  return plan;
+}
+
 export async function createSession(
   planId: string,
   label: string,
@@ -379,6 +420,12 @@ export async function fetchActiveDietPlan(): Promise<DietPlan | null> {
   return one<DietPlan>(
     `SELECT id, name, started_at, ended_at, is_active FROM diet_plans
      WHERE is_active = 1 ORDER BY started_at DESC LIMIT 1`,
+  );
+}
+
+export async function fetchDietPlanHistory(): Promise<DietPlan[]> {
+  return all<DietPlan>(
+    `SELECT id, name, started_at, ended_at, is_active FROM diet_plans ORDER BY started_at DESC`,
   );
 }
 
